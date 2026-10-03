@@ -9,6 +9,7 @@ import { formatDate, relativeDate, downloadBlob } from "../../util.js";
 import { STAGES } from "../../pipeline.js";
 import { exportProject } from "../../packaging/exports.js";
 import { languageName } from "../../config.js";
+import { folderStatus } from "../../local-folder.js";
 
 export async function renderLibrary() {
   const prefs = await getUiPrefs();
@@ -39,7 +40,9 @@ export async function renderLibrary() {
     select([["none", "Sans regroupement"], ["attention", "Regrouper par attention"]], lib.group, { onChange: (v) => { lib.group = v; save(); render(); }, attrs: { style: "width:auto", "aria-label": "Regrouper" } }),
     segmented([["grid", "Grille"], ["list", "Liste"]], lib.view, (v) => { lib.view = v; save(); render(); }, { ariaLabel: "Affichage" }));
   await render();
-  mount(renderAppLayout(h("div", { class: "stack" }, pageHead("Bibliothèque", `${summaries.length} livre${summaries.length > 1 ? "s" : ""} stocké${summaries.length > 1 ? "s" : ""} localement dans ce navigateur.`, [button("Ajouter un livre", { iconName: "plus", onClick: () => navigate("/books/new") }), button("Importer", { variant: "secondary", iconName: "upload", onClick: () => navigate("/books/import") })]), toolbar, body)));
+  const fs = await folderStatus().catch(() => null);
+  const folderBanner = fs?.connected ? h("div", { class: "callout" }, icon("library"), h("div", { class: "grow small" }, h("strong", {}, `Dossier local : ${fs.name}`), fs.permission === "granted" ? ` · sauvegarde automatique ${fs.autoSave ? "activée" : "désactivée"}` : " · autorisation à renouveler"), button("Gérer", { size: "sm", variant: "secondary", onClick: () => navigate("/settings/storage") })) : null;
+  mount(renderAppLayout(h("div", { class: "stack" }, folderBanner, pageHead("Bibliothèque", `${summaries.length} livre${summaries.length > 1 ? "s" : ""} stocké${summaries.length > 1 ? "s" : ""} localement dans ce navigateur.`, [button("Ajouter un livre", { iconName: "plus", onClick: () => navigate("/books/new") }), button("Importer", { variant: "secondary", iconName: "upload", onClick: () => navigate("/books/import") })]), toolbar, body)));
 }
 
 export async function bookDetail(s) {

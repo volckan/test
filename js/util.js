@@ -172,3 +172,6 @@ export function quizQuestionPrefix(q, k, total) { return (total ?? quizQuestions
 export function quizTitle(q) { return quizQuestions(q)[0]?.question ?? ""; }
 /** Normalise les marqueurs de trou d'une question à compléter en « ___ ». */
 export function normalizeBlank(text) { const t = String(text ?? "").replace(/\[\[blank[^\]]*\]\]|_{3,}|…{2,}|\.{4,}/g, "___"); return t.includes("___") ? t : `${t} ___`; }
+
+/** Libellé d'une page logique : « Page 3 », « Pages 2–3 » (double page) ou « Pages 4–9 » (découpage libre). */
+export function pageLabel(p) { const span = p?.spreadOf ?? p?.groupOf; return span && span[1] !== span[0] ? `Pages ${span[0]}–${span[1]}` : `Page ${p?.pageNumber ?? "?"}`; }

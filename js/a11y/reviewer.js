@@ -57,7 +57,7 @@ export const REVIEWER_CATALOG = {
       { id: "layout-preserved", label: "La mise en page et la structure sont préservées.", guidance: "Le passage d'une langue à l'autre ne casse pas la page.", requires_comment_on_failure: true, requires_suggested_modification_on_failure: true },
       { id: "translation-cross-device", label: "La traduction fonctionne sur tous les appareils et navigateurs.", guidance: "Tester sur mobile et ordinateur.", requires_comment_on_failure: true, requires_suggested_modification_on_failure: false },
       { id: "translation-loads", label: "La traduction se charge correctement et rapidement.", guidance: "Pas de délai excessif ni d'erreur.", requires_comment_on_failure: true, requires_suggested_modification_on_failure: false } ] },
-    { id: "sign-language", label: "Langue des signes", criteria: [
+    { id: "sign-language", label: "Vidéo (langue des signes)", criteria: [
       { id: "signing-fully-visible", label: "Les mouvements et expressions faciales sont entièrement visibles.", guidance: "Cadrage complet du haut du corps.", requires_comment_on_failure: true, requires_suggested_modification_on_failure: true },
       { id: "background-attire", label: "L'arrière-plan et la tenue ne distraient pas de la signation.", guidance: "Fond uni, vêtements contrastés.", requires_comment_on_failure: true, requires_suggested_modification_on_failure: true },
       { id: "local-sign-language", label: "La langue des signes locale est utilisée.", guidance: "Par exemple la LSF pour la France.", requires_comment_on_failure: true, requires_suggested_modification_on_failure: true },

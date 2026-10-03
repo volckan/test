@@ -5,6 +5,7 @@ import { getSetting, setSetting, openDb, requestPersistence } from "./db.js";
 import { listBooks, bookEvents, getUiPrefs, bookSummary } from "./storage.js";
 import { runEvents } from "./pipeline/runner.js";
 import { llmEvents } from "./llm/client.js";
+import { startFolderAutoSave, folderStatus, reconnectFolder, folderEvents } from "./local-folder.js";
 import { STAGE_BY_NAME, PIPELINE } from "./pipeline.js";
 import { renderAppLayout } from "./ui/app-layout.js";
 import { openCommandPalette } from "./ui/command-palette.js";
@@ -75,6 +76,9 @@ runEvents.on("start", () => { window.__adtRunning = true; }); runEvents.on("comp
     await openDb();
     await applyTheme();
     requestPersistence();
+    startFolderAutoSave();
+    folderEvents.on("error", ({ label, message }) => toast(`Sauvegarde de « ${label} » dans le dossier impossible : ${message}`, { kind: "warning", title: "Dossier local" }));
+    folderStatus().then((fs) => { if (fs.connected && fs.permission !== "granted") toast(`Dossier « ${fs.name} » : autorisez de nouveau l'accès pour reprendre les sauvegardes automatiques.`, { kind: "warning", title: "Dossier local", duration: 0, action: { label: "Reconnecter", onClick: async () => { const p = await reconnectFolder(); toast(p === "granted" ? "Dossier reconnecté" : "Autorisation refusée", { kind: p === "granted" ? "success" : "warning" }); } } }); }).catch(() => {});
     const onboarded = await getSetting("onboarded", false);
     const books = await listBooks();
     if (!onboarded && !books.length && !location.hash.startsWith("#/onboarding") && !location.hash.startsWith("#/settings")) navigate("/onboarding", { replace: true });

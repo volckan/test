@@ -10,7 +10,7 @@ export const FEATURES = [
   { key: "listen", icon: "audio-lines", color: "#e11d48", label: "Écouter", blurb: "Synthèse vocale naturelle, page par page." },
   { key: "easy-read", icon: "file-text", color: "#c026d3", label: "Lecture facile", blurb: "Texte simplifié pour les lecteurs débutants." },
   { key: "translate", icon: "languages", color: "#db2777", label: "Traduire", blurb: "La même édition dans chaque langue." },
-  { key: "sign", icon: "hand", color: "#0891b2", label: "Signer", blurb: "Vidéo en langue des signes liée à chaque page." },
+  { key: "sign", icon: "video", color: "#0891b2", label: "Vidéo", blurb: "Vidéos (langue des signes, explications) liées aux pages." },
   { key: "captions", icon: "image", color: "#0d9488", label: "Légendes", blurb: "Visuels décrits et textes alternatifs." },
   { key: "quizzes", icon: "help-circle", color: "#ea580c", label: "Quiz", blurb: "Vérifications de compréhension par section." },
   { key: "glossary", icon: "book-open", color: "#65a30d", label: "Glossaire", blurb: "Termes clés définis à leur place." },

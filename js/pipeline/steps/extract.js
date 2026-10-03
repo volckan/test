@@ -43,6 +43,7 @@ export async function extract(ctx) {
   }
   // Doubles pages
   await applySpreads(storage, config);
+  await applyPageGroups(storage, config);
   const pages = await storage.getPages();
   const emptyText = pages.filter((p) => !p.text.trim()).length;
   return { message: `${pages.length} pages extraites${emptyText ? ` · ${emptyText} sans texte (PDF scanné ?)` : ""}` };
@@ -78,6 +79,66 @@ export async function mergeSpread(storage, a, b) {
   const positioned = [...a.positioned.map((p) => ({ ...p, left: p.left * wa, width: p.width * wa })), ...b.positioned.map((p) => ({ ...p, id: `b${p.id}`, left: wa + p.left * (1 - wa), width: p.width * (1 - wa) }))];
   await storage.putPage({ ...a, text: `${a.text}\n\n${b.text}`.trim(), positioned, width: canvas.width, height: canvas.height, pdfWidth: a.pdfWidth + b.pdfWidth, spreadOf: [a.pageNumber, b.pageNumber], secondPage: { pageId: b.pageId, pageNumber: b.pageNumber, text: b.text, positioned: b.positioned, width: b.width, height: b.height, pdfWidth: b.pdfWidth, pdfHeight: b.pdfHeight } });
   await storage.deletePage(b.pageId);
+}
+
+/**
+ * Découpage libre : fusionne verticalement des pages PDF consécutives en une seule page logique.
+ * La page de tête garde son identifiant ; les membres sont conservés pour pouvoir séparer à nouveau.
+ */
+export async function mergePageGroup(storage, pages) {
+  if (!pages || pages.length < 2) return;
+  const canvases = [];
+  for (const p of pages) canvases.push(await blobToCanvas(await storage.getImageBlob(`${p.pageId}_page`)));
+  const width = Math.max(...canvases.map((c) => c.width));
+  const heights = canvases.map((c) => Math.round(c.height * (width / c.width)));
+  const total = heights.reduce((a, b) => a + b, 0);
+  const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = total;
+  const g = canvas.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, width, total);
+  let y = 0; const offsets = [];
+  canvases.forEach((c, i) => { g.drawImage(c, 0, y, width, heights[i]); offsets.push(y); y += heights[i]; });
+  const lead = pages[0];
+  await storage.putImage({ imageId: `${lead.pageId}_page`, pageId: lead.pageId, width, height: total, source: "page", renderMethod: "raster", bounds: { x: 0, y: 0, w: 1, h: 1 } }, await canvasToBlob(canvas, "image/png"));
+  const positioned = []; const members = [];
+  for (let i = 0; i < pages.length; i++) {
+    const p = pages[i]; const y0 = offsets[i] / total, hf = heights[i] / total;
+    members.push({ pageId: p.pageId, pageNumber: p.pageNumber, text: p.text, positioned: p.positioned ?? [], width: p.width, height: p.height, pdfWidth: p.pdfWidth, pdfHeight: p.pdfHeight, imageCount: p.imageCount ?? 0 });
+    for (const t of p.positioned ?? []) positioned.push({ ...t, id: i ? `g${i}_${t.id}` : t.id, top: y0 + (t.top ?? 0) * hf, height: (t.height ?? 0) * hf });
+    if (i) for (const im of await storage.getPageImages(p.pageId)) {
+      if (im.imageId.endsWith("_page")) { await storage.deleteImage(im.imageId); continue; }
+      await storage.updateImage(im.imageId, { pageId: lead.pageId, originPageId: p.pageId, originBounds: im.bounds ?? null, bounds: im.bounds ? { x: im.bounds.x, y: y0 + im.bounds.y * hf, w: im.bounds.w, h: im.bounds.h * hf } : null });
+    }
+  }
+  await storage.putPage({ ...lead, text: pages.map((p) => p.text).join("\n\n").trim(), positioned, width, height: total, groupOf: [lead.pageNumber, pages[pages.length - 1].pageNumber], members });
+  for (const p of pages.slice(1)) await storage.deletePage(p.pageId);
+}
+
+/** Sépare une page logique issue du découpage libre en ses pages PDF d'origine. */
+export async function splitPageGroup(storage, pageId) {
+  const lead = await storage.getPage(pageId);
+  if (!lead?.groupOf || !lead.members?.length) return;
+  const c = await blobToCanvas(await storage.getImageBlob(`${lead.pageId}_page`));
+  const scaled = lead.members.map((m) => m.height * (lead.width / m.width));
+  const total = scaled.reduce((a, b) => a + b, 0) || lead.height;
+  let y = 0;
+  const { members, groupOf, ...rest } = lead;
+  for (let i = 0; i < members.length; i++) {
+    const m = members[i]; const hf = scaled[i] / total;
+    const crop = cropCanvas(c, { x: 0, y, w: 1, h: hf });
+    await storage.putImage({ imageId: `${m.pageId}_page`, pageId: m.pageId, width: crop.width, height: crop.height, source: "page", renderMethod: "raster", bounds: { x: 0, y: 0, w: 1, h: 1 } }, await canvasToBlob(crop));
+    await storage.putPage({ ...(m.pageId === lead.pageId ? rest : {}), pageId: m.pageId, pageNumber: m.pageNumber, text: m.text, positioned: m.positioned, width: m.width, height: m.height, pdfWidth: m.pdfWidth, pdfHeight: m.pdfHeight, imageCount: m.imageCount ?? 0 });
+    y += hf;
+  }
+  for (const im of await storage.getPageImages(lead.pageId)) if (im.originPageId && !im.imageId.endsWith("_page")) await storage.updateImage(im.imageId, { pageId: im.originPageId, bounds: im.originBounds ?? im.bounds, originPageId: undefined, originBounds: undefined });
+}
+
+/** Applique les groupes configurés (config.page_groups = [[début, fin], …], numéros de pages PDF). */
+export async function applyPageGroups(storage, config) {
+  if (config.grouping_mode !== "free" || !config.page_groups?.length) return;
+  for (const [start, end] of config.page_groups) {
+    if (!(end > start)) continue;
+    const pages = (await storage.getPages()).filter((p) => p.pageNumber >= start && p.pageNumber <= end && !p.groupOf && !p.spreadOf).sort((a, b) => a.pageNumber - b.pageNumber);
+    if (pages.length > 1) await mergePageGroup(storage, pages);
+  }
 }
 
 export async function splitSpread(storage, pageId) {

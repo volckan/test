@@ -95,3 +95,5 @@ details.acc { border: 1px solid var(--border); border-radius: 10px; padding: 8px
 .a11y-impact-critical { color: #b91c1c; } .a11y-impact-serious { color: #c2410c; } .a11y-impact-moderate { color: #b45309; } .a11y-impact-minor { color: var(--fg-muted); }
 .html-editor { width: 100%; min-height: 360px; font-family: var(--mono); font-size: 12.5px; line-height: 1.45; white-space: pre; }
 .resizer { display: flex; gap: 6px; } .kbd { font: 600 11.5px var(--mono); background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+
+.stage-item.stage-disabled { opacity: .6; }

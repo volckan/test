@@ -38,6 +38,7 @@ export async function buildWebPackage(storage, options = {}) {
   const progress = options.onProgress ?? (() => {});
   const config = await storage.effectiveConfig();
   const features = { ...DEFAULT_FEATURES, ...(options.features ?? {}) };
+  if (config.speech?.enabled === false) features.readAloud = false; // module Parole désactivé : pas de lecture audio
   const meta = await storage.getNodeData("metadata", "book");
   const book = await storage.getBook();
   const title = book?.titleOverride ?? meta?.title ?? book?.title ?? storage.label;

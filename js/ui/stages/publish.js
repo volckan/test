@@ -1,4 +1,4 @@
-// Vues « Langue des signes », « Validation », « Aperçu » et « Exporter ».
+// Vues « Vidéo », « Validation », « Aperçu » et « Exporter ».
 import { h, button, icon, badge, toast, dialog, confirmDialog, segmented, switchRow, select, textarea, textInput, field, progressBar, tabs, kv } from "../dom.js";
 import { runCard, prereqGuard, patchBookConfig, versionPicker, viewportToggle, startStage } from "./common.js";
 import { outputLanguages } from "../../pipeline/steps/translate.js";
@@ -10,7 +10,7 @@ import { runStages } from "../../pipeline/runner.js";
 import { downloadBlob, nowIso, uuid, pickFile, formatBytes, formatDate } from "../../util.js";
 import { languageName } from "../../config.js";
 
-// ── Langue des signes ─────────────────────────────────────────────────────
+// ── Vidéo ─────────────────────────────────────────────────────
 export async function renderSignLanguage(ctx, container) {
   const node = (await ctx.storage.getNodeData("sign-language", "book")) ?? { assignments: {}, videos: [] };
   const videos = await ctx.storage.listBlobs("sign/");
@@ -151,10 +151,10 @@ export async function renderExport(ctx, container) {
     { id: "epub", title: "EPUB 3", desc: "EPUB 3 avec overlays SMIL (lecture synchronisée), glossaire (popups ou pages), navigation et métadonnées d'accessibilité.", icon: "book", run: () => exportEpub(ctx.storage, title, { glossaryMode: ctx.config.epub_glossary?.mode ?? "word", placements: ctx.config.epub_glossary?.page_placements ?? ["end"] }) },
     { id: "pnld", title: "PNLD / FNDE (bêta)", desc: "Structure « obra digital » du programme brésilien PNLD : content/, resources/, OPF et NCX.", icon: "layers", run: () => exportPnld(ctx.storage, title) },
   ];
-  const featureLabels = { glossary: "Glossaire", quizzes: "Quiz", readAloud: "Lecture audio", signLanguage: "Langue des signes", easyRead: "Lecture facile", captions: "Légendes d'images", toc: "Table des matières", activities: "Activités interactives", notepad: "Bloc-notes", eli5: "Explique-moi simplement" };
+  const featureLabels = { glossary: "Glossaire", quizzes: "Quiz", readAloud: "Lecture audio", signLanguage: "Vidéos (langue des signes ou autres)", easyRead: "Lecture facile", captions: "Légendes d'images", toc: "Table des matières", activities: "Activités interactives", notepad: "Bloc-notes", eli5: "Explique-moi simplement" };
   const dl = h("div", { class: "field" }, h("span", { class: "field-label" }, "Barre d'outils du lecteur"), h("div", { class: "row row-wrap" }, segmented([["compact", "Compacte"], ["full", "Pleine largeur"]], opts.defaultSettings.dock_layout?.width ?? "full", (v) => { (opts.defaultSettings.dock_layout ??= {}).width = v; saveOpts(); }), segmented([["top", "Haut"], ["bottom", "Bas"]], opts.defaultSettings.dock_layout?.position ?? "bottom", (v) => { (opts.defaultSettings.dock_layout ??= {}).position = v; saveOpts(); }), segmented([["center", "Centrée"], ["spread", "Étalée"]], opts.defaultSettings.dock_layout?.align ?? "spread", (v) => { (opts.defaultSettings.dock_layout ??= {}).align = v; saveOpts(); })));
   const options = h("div", { class: "card" }, h("div", { class: "card-body stack" }, h("h3", { style: { margin: 0 } }, "Options d'exportation"),
-    h("div", { class: "field" }, h("span", { class: "field-label" }, "Fonctionnalités incluses"), h("div", { class: "grid grid-2" }, Object.entries(featureLabels).map(([k, l]) => switchRow(l, opts.features[k] !== false, (v) => { opts.features[k] = v; saveOpts(); })))),
+    h("div", { class: "field" }, h("span", { class: "field-label" }, "Fonctionnalités incluses"), h("div", { class: "grid grid-2" }, Object.entries(featureLabels).map(([k, l]) => { const speechOff = k === "readAloud" && ctx.config.speech?.enabled === false; return switchRow(l, speechOff ? false : opts.features[k] !== false, (v) => { opts.features[k] = v; saveOpts(); }, { disabled: speechOff, hint: speechOff ? "Module Parole désactivé pour ce livre (réglages de l'étape Parole)." : undefined }); }))),
     h("div", { class: "field" }, h("span", { class: "field-label" }, "Langues de sortie (la première est la langue par défaut)"), h("div", { class: "row row-wrap" }, langs.map((l) => switchRow(languageName(l), opts.languages.includes(l), (v) => { opts.languages = v ? langs.filter((x) => opts.languages.includes(x) || x === l) : opts.languages.filter((x) => x !== l); saveOpts(); })))),
     dl,
     h("div", { class: "row row-wrap" }, field("Thème", select([["system", "Système"], ["light", "Clair"], ["dark", "Sombre"]], opts.defaultSettings.theme ?? "system", { onChange: (v) => { opts.defaultSettings.theme = v; saveOpts(); } })), field("Taille des icônes", select([["sm", "Petites"], ["md", "Moyennes"], ["lg", "Grandes"]], opts.defaultSettings.icon_size ?? "md", { onChange: (v) => { opts.defaultSettings.icon_size = v; saveOpts(); } })), switchRow("Réduire les animations", !!opts.defaultSettings.reduce_motion, (v) => { opts.defaultSettings.reduce_motion = v; saveOpts(); })),

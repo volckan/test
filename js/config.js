@@ -176,6 +176,7 @@ export const DEFAULT_CONFIG = {
   output_languages: [],
   book_format: ["web"],
   speech: {
+    enabled: true,
     default_provider: "openai",
     model: DEFAULT_SPEECH_MODEL_ID,
     format: "mp3",

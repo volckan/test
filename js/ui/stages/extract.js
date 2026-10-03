@@ -1,7 +1,9 @@
 // Vue « Extraire » : page d'accueil de l'étape, vignettes, détail d'une page (texte, images, élagage, recadrage, segmentation).
 import { h, button, icon, badge, blobImg, toast, dialog, confirmDialog, segmented, switchRow, textInput, field, select } from "../dom.js";
 import { runCard, pageThumbs, pageImage, patchBookConfig, lightbox, versionPicker } from "./common.js";
-import { effectiveImages, setImageKept, applySegmentation, applyCrop, cropFromPage, mergeSpread, splitSpread } from "../../pipeline/steps/extract.js";
+import { effectiveImages, setImageKept, applySegmentation, applyCrop, cropFromPage, mergeSpread, splitSpread, mergePageGroup, splitPageGroup } from "../../pipeline/steps/extract.js";
+import { invalidateDownstream } from "../../pipeline/runner.js";
+import { pageLabel } from "../../util.js";
 import { callLLM } from "../../llm/client.js";
 import { pageImageForLlm, imageBlobForLlm, SCHEMAS, stepModel } from "../../pipeline/steps/common.js";
 import { blobToDataUrl } from "../../util.js";
@@ -13,7 +15,7 @@ export async function renderExtract(ctx, container) {
   const settings = h("div", { class: "card" }, h("div", { class: "card-body stack" },
     h("h3", { style: { margin: 0 } }, "Réglages de l'extraction"),
     h("div", { class: "field" }, h("span", { class: "field-label" }, "Plage de pages"), rangeRow, h("span", { class: "field-hint" }, "Laissez vide pour traiter tout le livre. Relancez l'extraction après modification.")),
-    h("div", { class: "field" }, h("span", { class: "field-label" }, "Mode de regroupement des pages"), segmented([["single", "Page unique"], ["spread", "Double page"]], cfg.spread_mode ? "spread" : "single", (v) => patchBookConfig(ctx, { spread_mode: v === "spread" }))),
+    h("div", { class: "field" }, h("span", { class: "field-label" }, "Mode de regroupement des pages"), h("div", { class: "row row-wrap" }, segmented([["single", "Page unique"], ["spread", "Double page"], ["free", "Découpage libre"]], cfg.grouping_mode ?? (cfg.spread_mode ? "spread" : "single"), async (v) => { await patchBookConfig(ctx, { grouping_mode: v, spread_mode: v === "spread" }); ctx.refresh(); }), (cfg.grouping_mode ?? (cfg.spread_mode ? "spread" : "single")) === "free" ? button("Définir le découpage…", { size: "sm", variant: "secondary", iconName: "split", onClick: () => groupPicker(ctx) }) : null), h("span", { class: "field-hint" }, (cfg.grouping_mode ?? (cfg.spread_mode ? "spread" : "single")) === "free" ? `Le PDF est traité comme un seul document : vous choisissez où couper. ${(cfg.page_groups ?? []).filter(([a, b]) => b > a).length ? `${(cfg.page_groups ?? []).filter(([a, b]) => b > a).length} groupe(s) de pages défini(s).` : "Aucun groupe défini pour l'instant : chaque page reste séparée."}` : "Découpage libre : regroupez des pages consécutives en un seul écran, puis structurez-les à votre guise dans le sectionnement.")),
     h("div", { class: "field" }, h("span", { class: "field-label" }, "Extraction de figures"), segmented([["off", "Désactivée"], ["auto", "Automatique"], ["all", "Toutes"]], cfg.figure_extraction_mode ?? "off", (v) => patchBookConfig(ctx, { figure_extraction_mode: v }))),
     switchRow("Supprimer les filigranes", !!cfg.remove_watermarks, (v) => patchBookConfig(ctx, { remove_watermarks: v }), { hint: extraction?.repeatedText?.length ? `Textes répétés détectés : ${extraction.repeatedText.slice(0, 3).map((t) => `« ${t.slice(0, 40)} »`).join(", ")}` : "Détecte les textes identiques répétés sur la plupart des pages." })));
   container.appendChild(h("div", { class: "stack" }, settings, runCard(ctx, "extract")));
@@ -80,4 +82,46 @@ export async function spreadPicker(ctx) {
   const render = () => { strip.innerHTML = ""; pages.forEach((p, i) => { const next = pages[i + 1]; strip.appendChild(h("div", { class: "col", style: { alignItems: "center", gap: "4px", flex: "none" } }, blobImg(ctx.storage.getImageBlob(`${p.pageId}_page`), { style: "height:120px;border-radius:4px;border:1px solid var(--border)" }), h("span", { class: "small" }, p.spreadOf ? `${p.spreadOf[0]}–${p.spreadOf[1]}` : p.pageNumber), p.spreadOf ? badge("Fusionnée", "accent") : next && !next.spreadOf ? button(pairs.has(p.pageNumber) ? "Délier" : "Lier →", { size: "sm", variant: pairs.has(p.pageNumber) ? "primary" : "secondary", onClick: () => { if (pairs.has(p.pageNumber)) pairs.delete(p.pageNumber); else { pairs.delete(p.pageNumber - 1); pairs.delete(p.pageNumber + 1); pairs.add(p.pageNumber); } render(); } }) : null)); }); };
   render();
   dialog({ title: "Doubles pages", size: "xl", body: h("div", { class: "stack" }, h("p", { class: "muted small" }, "Liez deux pages en vis-à-vis pour les réunir en un écran large. Les fusions sont appliquées sur les images et le texte extraits."), strip), actions: [{ label: "Annuler", variant: "ghost" }, { label: "Appliquer", onClick: async () => { await patchBookConfig(ctx, { spread_pairs: [...pairs].sort((a, b) => a - b) }, { silent: true }); for (const lead of pairs) { const a = (await ctx.storage.getPages()).find((p) => p.pageNumber === lead); const b = (await ctx.storage.getPages()).find((p) => p.pageNumber === lead + 1); if (a && b && !a.spreadOf) await mergeSpread(ctx.storage, a, b); } for (const p of await ctx.storage.getPages()) if (p.spreadOf && !pairs.has(p.pageNumber)) await splitSpread(ctx.storage, p.pageId); await ctx.storage.updateBook({ spreadReviewed: true }); toast("Doubles pages appliquées", { kind: "success" }); ctx.refresh(); } }] });
+}
+
+
+/** Découpage libre : choisir où couper le document (entre deux pages PDF) ; les pages entre deux coupures forment une page logique. */
+export async function groupPicker(ctx) {
+  const pages = await ctx.storage.getPages();
+  // Numéros de pages PDF dans l'ordre, en déroulant les groupes/doubles pages existants
+  const numbers = []; for (const p of pages) { const span = p.groupOf ?? p.spreadOf; if (span) for (let n = span[0]; n <= span[1]; n++) numbers.push(n); else numbers.push(p.pageNumber); }
+  numbers.sort((a, b) => a - b);
+  // coupures actuelles : après chaque page qui termine une page logique
+  const cuts = new Set(); for (const p of pages) { const span = p.groupOf ?? p.spreadOf; cuts.add(span ? span[1] : p.pageNumber); }
+  const thumbFor = (n) => { const p = pages.find((x) => x.pageNumber === n || ((x.groupOf ?? x.spreadOf) && n >= (x.groupOf ?? x.spreadOf)[0] && n <= (x.groupOf ?? x.spreadOf)[1])); return p ? ctx.storage.getImageBlob(`${p.pageId}_page`) : null; };
+  const groupsFrom = () => { const out = []; let start = numbers[0]; for (const n of numbers) { if (cuts.has(n) || n === numbers[numbers.length - 1]) { out.push([start, n]); start = n + 1; } } return out; };
+  const summary = h("p", { class: "muted small" });
+  const strip = h("div", { class: "stack", style: { gap: "4px", maxHeight: "60vh", overflowY: "auto", padding: "4px" } });
+  const render = () => {
+    strip.innerHTML = ""; const groups = groupsFrom(); let gi = 0;
+    numbers.forEach((n, i) => {
+      const g = groups.find(([a, b]) => n >= a && n <= b); const first = g && g[0] === n; if (first) gi++;
+      strip.appendChild(h("div", { class: "row", style: { gap: "10px", alignItems: "center", background: first ? "var(--surface-2)" : "transparent", borderRadius: "6px", padding: "2px 6px" } }, h("span", { class: "small muted", style: { minWidth: "90px" } }, first ? `Écran ${gi}` : ""), blobImg(thumbFor(n), { style: "height:56px;border-radius:4px;border:1px solid var(--border)" }), h("span", { class: "small", style: { minWidth: "70px" } }, `Page ${n}`), h("span", { class: "grow" }), i < numbers.length - 1 ? button(cuts.has(n) ? "Coupure ✂" : "Enchaîner ↓", { size: "sm", variant: cuts.has(n) ? "primary" : "secondary", title: cuts.has(n) ? "Les pages suivantes commencent un nouvel écran" : "La page suivante est rattachée à cet écran", onClick: () => { if (cuts.has(n)) cuts.delete(n); else cuts.add(n); render(); } }) : null));
+    });
+    const big = groups.filter(([a, b]) => b - a + 1 > 8).length;
+    summary.textContent = `${groups.length} écran(s) pour ${numbers.length} pages PDF.${big ? ` Attention : ${big} groupe(s) de plus de 8 pages ; la structuration par IA peut perdre en qualité sur de très longs écrans.` : ""}`;
+  };
+  const everyN = textInput({ type: "number", min: 2, max: 50, value: 2, style: "width:70px", "aria-label": "Toutes les N pages" });
+  render();
+  dialog({ title: "Découpage libre du document", size: "xl", body: h("div", { class: "stack" },
+    h("p", { class: "muted small" }, "Le PDF est considéré comme un seul document. Choisissez où couper : les pages entre deux coupures sont réunies en un seul écran (image empilée, texte et images regroupés), que vous pourrez ensuite structurer librement dans le sectionnement."),
+    h("div", { class: "row row-wrap" }, button("Un seul document", { size: "sm", variant: "secondary", onClick: () => { cuts.clear(); render(); } }), button("Une page par écran", { size: "sm", variant: "secondary", onClick: () => { cuts.clear(); numbers.forEach((n) => cuts.add(n)); render(); } }), h("span", { class: "row" }, button("Couper toutes les", { size: "sm", variant: "secondary", onClick: () => { const k = Math.max(2, Number(everyN.value) || 2); cuts.clear(); numbers.forEach((n, i) => { if ((i + 1) % k === 0) cuts.add(n); }); render(); } }), everyN, h("span", { class: "small muted" }, "pages"))),
+    summary, strip),
+    actions: [{ label: "Annuler", variant: "ghost" }, { label: "Appliquer", onClick: async () => {
+      const groups = groupsFrom();
+      toast("Application du découpage…");
+      try {
+        for (const p of await ctx.storage.getPages()) { if (p.groupOf) await splitPageGroup(ctx.storage, p.pageId); else if (p.spreadOf) await splitSpread(ctx.storage, p.pageId); }
+        for (const [a, b] of groups) { if (b <= a) continue; const members = (await ctx.storage.getPages()).filter((p) => p.pageNumber >= a && p.pageNumber <= b).sort((x, y) => x.pageNumber - y.pageNumber); if (members.length > 1) await mergePageGroup(ctx.storage, members); }
+        await patchBookConfig(ctx, { grouping_mode: "free", spread_mode: false, page_groups: groups.filter(([a, b]) => b > a) }, { silent: true });
+        await invalidateDownstream(ctx.label, "extract");
+        toast(`Découpage appliqué : ${groups.length} écran(s). Relancez le sectionnement.`, { kind: "success" });
+        ctx.refresh();
+      } catch (e) { toast(e.message, { kind: "error", title: "Découpage" }); }
+    } }] });
 }

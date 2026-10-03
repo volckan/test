@@ -8,7 +8,7 @@ statiques (GitHub Pages, Netlify, un simple `python3 -m http.server`…).
 L'application transforme un manuel scolaire au format PDF en **manuel numérique accessible** (ADT,
 *Accessible Digital Textbook*) : extraction, structuration par IA, rendu HTML accessible, activités
 interactives, quiz, glossaire, lecture facile, traduction, lecture à voix haute avec surlignage des mots,
-langue des signes, validation WCAG, puis export vers plusieurs formats.
+vidéos (langue des signes ou compléments), validation WCAG, puis export vers plusieurs formats.
 
 ## Fonctionnalités
 
@@ -32,7 +32,7 @@ ou par livre), découpage et fusion de livres en parties, archive de projet (imp
 messages), journal consultable de tous les appels avec coût estimé, statistiques par étape.
 
 **Lecteur ADT embarqué** dans chaque export : barre d'outils, table des matières, glossaire avec
-surlignage, lecture à voix haute avec surlignage mot à mot, vidéo en langue des signes, lecture facile,
+surlignage, lecture à voix haute avec surlignage mot à mot, vidéo associée à la section, lecture facile,
 bloc-notes, « explique-moi simplement », réglages d'accessibilité (thème, taille des icônes, animations,
 vitesse de lecture), tous les types d'activités (vrai/faux, choix multiple, texte à trous, glisser-déposer,
 appariement, tri, remise en ordre, texte libre, pas à pas…), quiz, visite guidée, mode hors ligne.
@@ -74,8 +74,25 @@ est éditable dans l'écran Quiz, où l'on peut aussi ajouter une question vide 
 de pages choisies. Dans le lecteur, les réponses sont corrigées question par question et la page est
 validée quand toutes sont justes.
 
-La langue des signes ne fait appel à aucun modèle d'IA : les vidéos sont réalisées par des interprètes,
-téléversées puis affectées aux sections et aux termes du glossaire dans l'étape « Langue des signes ». Si aucune clé n'existe pour le fournisseur demandé, le
+**Vidéo** : l'étape Vidéo ne fait appel à aucun modèle d'IA. On y téléverse des vidéos (langue des
+signes, explications, compléments) que l'on affecte aux sections et aux termes du glossaire ; le lecteur
+les affiche en incrustation.
+
+**Module Parole désactivable** : dans les réglages Parole d'un livre, ou par défaut dans Paramètres →
+Parole, le module Parole peut être désactivé. Les étapes de synthèse vocale et d'horodatage sont alors
+ignorées et le lecteur n'affiche pas la lecture audio.
+
+**Découpage libre du document** : dans l'étape Extraire, le mode de regroupement « Découpage libre »
+considère le PDF comme un seul document. Le bouton « Définir le découpage… » permet de choisir où couper
+(un seul écran, une page par écran, toutes les N pages, ou coupure par coupure). Les pages réunies forment
+un écran unique (image empilée, texte et images regroupés) que le sectionnement structure ensuite, et que
+l'on peut redécouper librement en sections. Les étapes en aval sont marquées à mettre à jour.
+
+**Dossier sur l'ordinateur** : dans Paramètres → Stockage, on peut choisir un dossier local (Chrome, Edge,
+Opera). Chaque livre y est enregistré en archive de projet, réécrite automatiquement une vingtaine de
+secondes après une modification. Les archives du dossier peuvent être importées ou remplacer le livre
+local, ce qui permet de passer d'un navigateur ou d'un ordinateur à l'autre. Après un redémarrage, le
+navigateur redemande l'autorisation d'écrire dans le dossier. Si aucune clé n'existe pour le fournisseur demandé, le
 premier fournisseur configuré pour la même tâche est utilisé et une notification le signale.
 
 ## Utilisation

@@ -64,8 +64,10 @@ export async function synthesizeEntry({ storage, config, lang, entry, slot = "pr
   return { textId: entry.id, language: lang, fileName, voice: v.voice, model, provider: prov, voiceSlot: slot, voiceLabel: v.label, cached: false, textHash: (await sha256(`${model}|${v.voice}|${entry.speechText ?? entry.text}`)).slice(0, 16), alignment: res.alignment ?? null };
 }
 
+export const SPEECH_DISABLED_MESSAGE = "Module Parole désactivé pour ce livre";
 export async function tts(ctx) {
   const { storage, config } = ctx;
+  if (config.speech?.enabled === false) return { skipped: true, message: SPEECH_DISABLED_MESSAGE };
   const credentials = await getCredentials();
   const langs = await outputLanguages(storage, config);
   const sp = config.speech ?? {};
@@ -136,6 +138,7 @@ export async function audioDuration(blob) {
 
 export async function wordTimestamps(ctx) {
   const { storage, config } = ctx;
+  if (config.speech?.enabled === false) return { skipped: true, message: SPEECH_DISABLED_MESSAGE };
   if (config.speech?.word_highlighting === false) return { skipped: true, message: "Surlignage par phrase (désactivé)" };
   const credentials = await getCredentials();
   const whisper = transcriptionProvider(credentials, config.speech?.transcription_provider);

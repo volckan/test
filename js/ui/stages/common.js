@@ -3,7 +3,7 @@ import { h, button, icon, badge, select, dialog, confirmDialog, toast, blobImg, 
 import { STAGE_BY_NAME, STAGE_BY_SLUG, STAGE_DESCRIPTIONS, upstreamStages } from "../../pipeline.js";
 import { STATUS_LABELS, runStages } from "../../pipeline/runner.js";
 import { runButton, startStage } from "../screens/book-layout.js";
-import { formatDuration, formatDate, blobToDataUrl } from "../../util.js";
+import { formatDuration, formatDate, blobToDataUrl, pageLabel } from "../../util.js";
 import { buildPreviewDocument } from "../../pipeline/screenshot.js";
 import { getTypography, typographyCss } from "../../pipeline/typography.js";
 import { runEvents } from "../../pipeline/runner.js";
@@ -57,7 +57,7 @@ export async function versionPicker(storage, node, itemId, { onChange, renderDat
 export async function pageThumbs(ctx, { active, onPick, pages, annotate } = {}) {
   const grid = h("div", { class: "thumb-grid" });
   for (const p of pages ?? ctx.pages) {
-    const card = h("button", { type: "button", class: ["thumb-card", active === p.pageId && "active"], onClick: () => onPick(p) }, blobImg(ctx.storage.getImageBlob(`${p.pageId}_page`), { alt: `Page ${p.pageNumber}` }), h("div", { class: "row between small" }, h("strong", {}, `Page ${p.pageNumber}${p.spreadOf ? `–${p.spreadOf[1]}` : ""}`), annotate ? await annotate(p) : null));
+    const card = h("button", { type: "button", class: ["thumb-card", active === p.pageId && "active"], onClick: () => onPick(p) }, blobImg(ctx.storage.getImageBlob(`${p.pageId}_page`), { alt: `Page ${p.pageNumber}` }), h("div", { class: "row between small" }, h("strong", {}, pageLabel(p)), annotate ? await annotate(p) : null));
     grid.appendChild(card);
   }
   return grid;

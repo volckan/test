@@ -5,7 +5,7 @@ import { navigate, href } from "../../router.js";
 import { BookStorage, bookEvents, bookSummary } from "../../storage.js";
 import { STAGES, STAGE_BY_SLUG, STAGE_GROUPS, STAGE_DESCRIPTIONS, STAGES_WITH_PAGES, STAGE_BY_NAME, upstreamStages } from "../../pipeline.js";
 import { runEvents, getRun, cancelRun, stageStatuses, STATUS_LABELS, runStages } from "../../pipeline/runner.js";
-import { formatDuration } from "../../util.js";
+import { formatDuration, pageLabel } from "../../util.js";
 import { STAGE_VIEWS } from "../stages/index.js";
 import { renderStageSettings } from "../stages/stage-settings.js";
 import { renderDebug } from "../stages/debug.js";
@@ -117,11 +117,12 @@ function buildSidebar(ctx, sidebar, step, pageId) {
   const item = (s) => {
     const st = s.pipeline ? ctx.statuses[s.pipeline] : null;
     const active = s.slug === step;
-    const btn = h("button", { type: "button", class: ["stage-item", active && "active"], onClick: () => ctx.go(s.slug) }, h("span", { class: "stage-icon", style: { background: s.hex } }, icon(s.icon)), h("span", { class: "truncate" }, s.label), h("span", { class: "meta" }, st?.durationMs ? h("span", {}, formatDuration(st.durationMs)) : null, st ? h("span", { class: ["status-dot", st.status], title: STATUS_LABELS[st.status] }) : null));
+    const disabled = s.slug === "speech" && ctx.config?.speech?.enabled === false;
+    const btn = h("button", { type: "button", class: ["stage-item", active && "active", disabled && "stage-disabled"], title: disabled ? "Module désactivé pour ce livre" : undefined, onClick: () => ctx.go(s.slug) }, h("span", { class: "stage-icon", style: { background: disabled ? "#94a3b8" : s.hex } }, icon(s.icon)), h("span", { class: "truncate" }, s.label), h("span", { class: "meta" }, disabled ? h("span", { class: "badge badge-muted", style: { fontSize: "10px" } }, "désactivé") : null, st?.durationMs ? h("span", {}, formatDuration(st.durationMs)) : null, st ? h("span", { class: ["status-dot", st.status], title: STATUS_LABELS[st.status] }) : null));
     const wrap = h("div", {}, btn);
     if (active && STAGES_WITH_PAGES.has(s.slug) && ctx.pages.length) {
       const list = h("div", { class: "page-list" });
-      for (const p of ctx.pages.slice(0, 400)) list.appendChild(h("button", { type: "button", class: pageId === p.pageId ? "active" : "", onClick: () => ctx.go(s.slug, p.pageId) }, `Page ${p.pageNumber}${p.spreadOf ? `–${p.spreadOf[1]}` : ""}`));
+      for (const p of ctx.pages.slice(0, 400)) list.appendChild(h("button", { type: "button", class: pageId === p.pageId ? "active" : "", onClick: () => ctx.go(s.slug, p.pageId) }, pageLabel(p)));
       wrap.appendChild(list);
     }
     return wrap;

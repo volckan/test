@@ -113,7 +113,7 @@ export function upstreamStages(stageName) {
 
 // ── Configuration visuelle des vues du Studio (barre latérale) ──────────────
 // Les « slugs » suivent l'application d'origine : book, puis les étapes du
-// pipeline, puis les vues transverses (langue des signes, validation, aperçu, export).
+// pipeline, puis les vues transverses (vidéo, validation, aperçu, export).
 
 export const STAGE_GROUPS = [
   { key: "convert", label: "Conversion" },
@@ -132,7 +132,7 @@ export const STAGES = [
   { slug: "glossary", label: "Glossaire", runningLabel: "Génération du glossaire", icon: "book-open", hex: "#65a30d", group: "enhancements", pipeline: "glossary" },
   { slug: "toc", label: "Table des matières", runningLabel: "Génération de la TdM", icon: "list", hex: "#d97706", group: "enhancements", pipeline: "toc" },
   { slug: "easy-read", label: "Lecture facile", runningLabel: "Génération de la lecture facile", icon: "file-text", hex: "#c026d3", group: "enhancements", pipeline: "easy-read" },
-  { slug: "sign-language", label: "Langue des signes", runningLabel: "Langue des signes", icon: "hand", hex: "#0891b2", group: "enhancements" },
+  { slug: "sign-language", label: "Vidéo", runningLabel: "Vidéo", icon: "video", hex: "#0891b2", group: "enhancements" },
   { slug: "translate", label: "Langues", runningLabel: "Traduction", icon: "languages", hex: "#db2777", group: "localization", pipeline: "translate" },
   { slug: "speech", label: "Parole", runningLabel: "Synthèse vocale", icon: "audio-lines", hex: "#e11d48", group: "localization", pipeline: "speech" },
   { slug: "validation", label: "Validation", runningLabel: "Validation", icon: "shield-check", hex: "#059669", group: "packaging" },
@@ -152,7 +152,7 @@ export const STAGE_DESCRIPTIONS = {
   "easy-read": "Générer et éditer les blocs de texte « Lecture facile » du lecteur.",
   translate: "Traduire le contenu du livre vers les langues de sortie.",
   speech: "Générer la narration audio du contenu du livre.",
-  "sign-language": "Téléverser et associer des vidéos en langue des signes aux pages.",
+  "sign-language": "Téléverser des vidéos (langue des signes, explications, compléments) et les associer aux sections et aux termes du glossaire.",
   validation: "Lancer les vérifications d'accessibilité du livre et la liste de contrôle du réviseur.",
   preview: "Empaqueter et prévisualiser l'application web finale (ADT).",
   export: "Exporter les ADT empaquetés (Web, WebPub, EPUB 3, SCORM) et le projet.",

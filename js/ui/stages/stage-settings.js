@@ -49,7 +49,7 @@ export async function renderStageSettings(ctx, container, tab) {
     "translate:general": () => languagesTab(ctx, body), "translate:prompt": () => renderPrompt("translation"), "translate:translation-review": () => translationReviewTab(ctx, body), "translate:core-tts-profiles": () => coreTtsTab(ctx, body), "translate:image-translation": () => imageTranslationTab(ctx, body),
     "speech:general": () => speechGeneral(ctx, body), "speech:speech-prompts": () => speechPromptsTab(ctx, body), "speech:voices": () => voicesTab(ctx, body),
     "validation:general": () => a11yTab(ctx, body), "validation:reviewer-checklist": () => reviewerTab(ctx, body),
-    "sign-language:general": () => body.appendChild(h("p", { class: "muted" }, "Les vidéos en langue des signes s'affichent en incrustation dans le lecteur quand une vidéo est affectée à la section courante. Aucun réglage supplémentaire.")),
+    "sign-language:general": () => body.appendChild(h("p", { class: "muted" }, "Les vidéos (langue des signes, explications, compléments) s'affichent en incrustation dans le lecteur quand une vidéo est affectée à la section courante. Aucun réglage supplémentaire.")),
     "preview:general": () => readerTab(ctx, body), "export:general": () => readerTab(ctx, body),
   };
   await (map[`${slug}:${active}`] ?? (() => body.appendChild(h("p", { class: "muted" }, "Onglet non disponible."))))();
@@ -162,6 +162,7 @@ async function imageTranslationTab(ctx, body) {
 }
 async function speechGeneral(ctx, body) {
   const sp = ctx.config.speech ?? {};
+  body.appendChild(card("Module Parole", switchRow("Module Parole activé pour ce livre", sp.enabled !== false, async (v) => { await patchBookConfig(ctx, { speech: { enabled: v } }); ctx.refresh(); }, { hint: "Désactivé : synthèse vocale, horodatages et lecture audio du lecteur sont retirés pour ce livre." })));
   body.appendChild(card("Fournisseur et modèle", h("div", { class: "stack" }, await speechProviderPicker(ctx), h("div", { class: "row row-wrap" }, field("Format", select([["mp3", "MP3"], ["wav", "WAV"]], sp.format ?? "mp3", { onChange: (v) => patchBookConfig(ctx, { speech: { format: v } }) }))), await transcriptionPicker(ctx))));
   const cats = new Set(sp.excluded_categories ?? []);
   body.appendChild(card("Contenu lu à voix haute", h("div", { class: "grid grid-2" }, [["text", "Texte"], ["captions", "Légendes d'images"], ["answers", "Réponses des activités"], ["glossary", "Glossaire"], ["easy-read", "Lecture facile"]].map(([k, l]) => switchRow(l, !cats.has(k), (v) => { if (v) cats.delete(k); else cats.add(k); patchBookConfig(ctx, { speech: { excluded_categories: [...cats] } }); })))));

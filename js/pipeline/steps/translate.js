@@ -80,6 +80,7 @@ const NEEDS_TTS_PREP = /\$[^$]+\$|\\[a-zA-Z]+\{|\d|%|\b[A-Z]{2,}\b|\b(p|pp|ex|cf
 
 export async function coreTtsCatalog(ctx) {
   const { storage, config } = ctx;
+  if (config.speech?.enabled === false) return { skipped: true, message: "Module Parole désactivé pour ce livre" };
   const core = config.core_tts ?? {};
   const enabled = [core.latex_to_speech !== false ? "latex-to-speech" : null, core.language_normalization !== false ? "language-normalization" : null].filter(Boolean);
   const langs = await outputLanguages(storage, config);
