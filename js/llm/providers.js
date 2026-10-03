@@ -21,10 +21,12 @@ export const PROVIDERS = [
     fields: [{ key: "apiKey", kind: "secret", label: "Clé API", required: true }],
     defaultModels: { "structured-text": "mistral-large-latest" }, models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "pixtral-large-latest", "magistral-medium-latest"],
     help: "Clé API Mistral (console.mistral.ai). Compatible OpenAI ; les modèles Pixtral acceptent les images." },
-  { id: "openrouter", displayName: "OpenRouter", modalities: ["structured-text"], docsUrl: "https://openrouter.ai/keys",
+  { id: "openrouter", displayName: "OpenRouter", modalities: ["structured-text", "image", "tts", "stt"], docsUrl: "https://openrouter.ai/keys",
     fields: [{ key: "apiKey", kind: "secret", label: "Clé API", required: true, placeholder: "sk-or-…" }],
-    defaultModels: { "structured-text": "openai/gpt-5.4" }, models: ["openai/gpt-5.4", "anthropic/claude-sonnet-5.5", "google/gemini-2.5-pro", "meta-llama/llama-4-maverick", "qwen/qwen3-vl-235b-a22b-instruct"],
-    help: "Passerelle multi-modèles compatible OpenAI." },
+    defaultModels: { "structured-text": "openai/gpt-5.4", image: "google/gemini-2.5-flash-image", tts: "openai/gpt-4o-mini-tts", stt: "openai/whisper-1" },
+    models: ["openai/gpt-5.4", "anthropic/claude-sonnet-5.5", "google/gemini-2.5-pro", "meta-llama/llama-4-maverick", "qwen/qwen3-vl-235b-a22b-instruct"],
+    modelsByKind: { image: ["google/gemini-2.5-flash-image", "openai/gpt-5-image", "openai/gpt-5-image-mini", "black-forest-labs/flux.2-pro"], tts: ["openai/gpt-4o-mini-tts", "google/gemini-2.5-flash-preview-tts", "mistralai/voxtral-mini-tts-2603"], stt: ["openai/whisper-1", "openai/whisper-large-v3", "openai/whisper-large-v3-turbo"] },
+    help: "Passerelle multi-modèles compatible OpenAI : texte et vision, génération d'images, synthèse vocale et transcription (horodatages Whisper) avec une seule clé." },
   { id: "custom", displayName: "Personnalisé (compatible OpenAI)", modalities: ["structured-text"], docsUrl: "",
     fields: [{ key: "baseUrl", kind: "url", label: "URL de base", required: true, placeholder: "https://mon-serveur/v1" }, { key: "apiKey", kind: "secret", label: "Clé API", required: false }],
     defaultModels: {}, models: [],
@@ -260,14 +262,37 @@ function stripDataUrl(d) { return d.startsWith("data:") ? d.slice(d.indexOf(",")
 function mimeOf(d) { const m = /^data:([^;]+);/.exec(d); return m ? m[1] : "image/png"; }
 
 /** Liste des modèles disponibles pour un fournisseur (en ligne si possible, sinon liste embarquée). */
-export async function listModels(provider, credentials) {
+/** Correspondance modalité interne → filtre `output_modalities` de l'API Modèles d'OpenRouter. */
+const OPENROUTER_OUTPUT_MODALITY = { "structured-text": "text", image: "image", tts: "speech", stt: "transcription" };
+/** Fiches des modèles OpenRouter déjà consultés (voix prises en charge, modalités). */
+export const OPENROUTER_MODEL_INFO = new Map();
+
+async function fetchOpenRouterModels(creds, kind) {
+  const q = OPENROUTER_OUTPUT_MODALITY[kind] ?? "text";
+  const res = await fetchJson(`${openAiBase("openrouter", creds)}/models?output_modalities=${q}`, { headers: authHeaders("openrouter", creds) }, "OpenRouter", 20000);
+  const list = res.data ?? [];
+  for (const m of list) if (m?.id) OPENROUTER_MODEL_INFO.set(m.id, { voices: m.supported_voices ?? m.architecture?.supported_voices ?? null, input: m.architecture?.input_modalities ?? [], output: m.architecture?.output_modalities ?? [], name: m.name });
+  return list.map((m) => m.id).filter(Boolean).sort();
+}
+
+/** Voix prises en charge par un modèle de parole OpenRouter (liste vide si inconnue). */
+export async function openRouterVoices(model, credentials) {
+  if (!OPENROUTER_MODEL_INFO.has(model) && hasCredentials("openrouter", credentials)) { try { await fetchOpenRouterModels(credentials, "tts"); } catch (e) { console.warn("openRouterVoices", e); } }
+  return OPENROUTER_MODEL_INFO.get(model)?.voices ?? [];
+}
+
+export async function listModels(provider, credentials, kind = "structured-text") {
   const p = PROVIDER_BY_ID[provider]; const creds = credentials ?? {};
   if (!p) return [];
   try {
-    if (["openai", "mistral", "openrouter", "custom", "ollama"].includes(provider) && hasCredentials(provider, creds)) {
+    if (provider === "openrouter" && hasCredentials(provider, creds)) {
+      const ids = await fetchOpenRouterModels(creds, kind);
+      return kind === "structured-text" ? ids.filter((id) => (OPENROUTER_MODEL_INFO.get(id)?.output ?? ["text"]).includes("text")) : ids;
+    }
+    if (["openai", "mistral", "custom", "ollama"].includes(provider) && hasCredentials(provider, creds)) {
       const res = await fetchJson(`${openAiBase(provider, creds)}/models`, { headers: authHeaders(provider, creds) }, p.displayName, 20000);
       const ids = (res.data ?? []).map((m) => m.id).filter(Boolean).sort();
-      if (provider === "openai") return ids.filter((id) => /^(gpt|o\d|chatgpt)/.test(id) && !/realtime|audio|transcribe|tts|embedding|moderation|search|image|dall-e|whisper|instruct|codex/.test(id));
+      if (provider === "openai") return kind === "image" ? ids.filter((id) => /gpt-image|dall-e/.test(id)) : kind === "tts" ? ids.filter((id) => /tts/.test(id)) : kind === "stt" ? ids.filter((id) => /whisper|transcribe/.test(id)) : ids.filter((id) => /^(gpt|o\d|chatgpt)/.test(id) && !/realtime|audio|transcribe|tts|embedding|moderation|search|image|dall-e|whisper|instruct|codex/.test(id));
       return ids;
     }
     if (provider === "anthropic" && hasCredentials(provider, creds)) {
@@ -279,7 +304,7 @@ export async function listModels(provider, credentials) {
       return (res.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""));
     }
   } catch (e) { console.warn("listModels", e); }
-  return p.models;
+  return p.modelsByKind?.[kind] ?? (kind === "structured-text" ? p.models : [p.defaultModels?.[kind]].filter(Boolean));
 }
 
 /** Vérifie la connexion (statut : connected | rejected | unreachable | not-configured). */
@@ -320,6 +345,24 @@ export async function synthesizeSpeech({ provider, model, voice, text, language,
     const blob = await fetchBlob(`${openAiBase("openai", creds)}/audio/speech`, { method: "POST", headers: authHeaders("openai", creds), body: JSON.stringify(body) }, "OpenAI TTS", signal);
     return { blob, mime: blob.type || "audio/mpeg", ext: format === "wav" ? "wav" : "mp3" };
   }
+  if (provider === "openrouter") {
+    if (!hasCredentials("openrouter", creds)) throw new ProviderError("Clé OpenRouter absente pour la synthèse vocale. Ajoutez-la dans Paramètres → Fournisseurs IA ou choisissez un autre fournisseur de parole dans Paramètres → Parole.", { status: 401, provider });
+    const m = model || PROVIDER_BY_ID.openrouter.defaultModels.tts;
+    const v = await pickOpenRouterVoice(m, voice, language, creds);
+    const body = { model: m, input: text, voice: v, response_format: format === "wav" ? "wav" : "mp3" };
+    if (options.speed) body.speed = options.speed;
+    const url = `${openAiBase("openrouter", creds)}/audio/speech`;
+    let blob;
+    try {
+      // Les consignes de style ne sont acceptées que par certains modèles : premier essai avec, repli sans.
+      blob = await fetchBlob(url, { method: "POST", headers: authHeaders("openrouter", creds), body: JSON.stringify(instructions && /tts/.test(m) && m.startsWith("openai/") ? { ...body, instructions } : body) }, "OpenRouter TTS", signal);
+    } catch (e) {
+      if (!(e instanceof ProviderError) || !instructions || ![400, 422].includes(e.status)) throw e;
+      blob = await fetchBlob(url, { method: "POST", headers: authHeaders("openrouter", creds), body: JSON.stringify(body) }, "OpenRouter TTS", signal);
+    }
+    const wav = format === "wav" || /wav/.test(blob.type);
+    return { blob, mime: blob.type || (wav ? "audio/wav" : "audio/mpeg"), ext: wav ? "wav" : "mp3" };
+  }
   if (provider === "elevenlabs") {
     if (!hasCredentials("elevenlabs", creds)) throw new ProviderError("Clé ElevenLabs absente", { status: 401 });
     const voiceId = voice || "21m00Tcm4TlvDq8ikWAM";
@@ -359,6 +402,24 @@ export async function synthesizeSpeech({ provider, model, voice, text, language,
   throw new ProviderError(`Fournisseur de synthèse vocale inconnu : ${provider}`);
 }
 
+const OPENAI_VOICE_NAMES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+/**
+ * Choisit une voix valide pour un modèle de parole OpenRouter : la voix demandée si le modèle la connaît,
+ * sinon une voix du modèle correspondant à la langue (préfixe « fr_ » pour Voxtral), sinon la première.
+ */
+export async function pickOpenRouterVoice(model, voice, language, creds) {
+  const known = await openRouterVoices(model, creds);
+  if (voice && (!known.length || known.includes(voice))) return voice;
+  if (known.length) {
+    const lang = (language || "").toLowerCase().split("-")[0];
+    const byLang = known.find((v) => lang && v.toLowerCase().startsWith(`${lang}_`)) ?? known.find((v) => lang && v.toLowerCase().includes(`-${lang}-`));
+    return byLang ?? (voice && OPENAI_VOICE_NAMES.includes(voice) && model.startsWith("openai/") ? voice : known[0]);
+  }
+  if (model.startsWith("openai/")) return voice || "alloy";
+  if (model.startsWith("google/")) return voice && !OPENAI_VOICE_NAMES.includes(voice) ? voice : "Kore";
+  return voice || "alloy";
+}
+
 export async function fetchElevenLabsVoices(credentials) {
   const res = await fetchJson("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": credentials.elevenlabs.apiKey } }, "ElevenLabs", 20000);
   return (res.voices ?? []).map((v) => ({ id: v.voice_id, name: v.name, labels: v.labels ?? {}, category: v.category }));
@@ -370,9 +431,25 @@ export async function fetchAzureVoices(credentials) {
 }
 
 /** Transcription avec horodatages de mots (Whisper). Retourne { words:[{word,start,end}], duration, text }. */
-export async function transcribeWithTimestamps({ blob, language, credentials, signal, prompt }) {
+export function transcriptionProvider(creds, preferred) {
+  if (preferred && hasCredentials(preferred === "whisper" ? "openai" : preferred, creds)) return preferred === "whisper" ? "openai" : preferred;
+  if (hasCredentials("openai", creds)) return "openai";
+  if (hasCredentials("openrouter", creds)) return "openrouter";
+  return null;
+}
+
+export async function transcribeWithTimestamps({ blob, language, credentials, signal, prompt, provider, model }) {
   const creds = credentials ?? {};
-  if (!hasCredentials("openai", creds)) throw new ProviderError("La transcription des horodatages requiert une clé OpenAI (Whisper).", { status: 401 });
+  const prov = transcriptionProvider(creds, provider);
+  if (!prov) throw new ProviderError("La transcription des horodatages requiert une clé OpenAI (Whisper) ou OpenRouter.", { status: 401 });
+  if (prov === "openrouter") {
+    const fmt = blob.type.includes("wav") ? "wav" : blob.type.includes("ogg") ? "ogg" : blob.type.includes("webm") ? "webm" : "mp3";
+    const body = { model: model || PROVIDER_BY_ID.openrouter.defaultModels.stt, input_audio: { data: await blobToB64(blob), format: fmt }, response_format: "verbose_json", timestamp_granularities: ["word"] };
+    if (language) body.language = language.split("-")[0];
+    if (prompt) body.prompt = prompt.slice(0, 800);
+    const res = await fetchJson(`${openAiBase("openrouter", creds)}/audio/transcriptions`, { method: "POST", headers: authHeaders("openrouter", creds), body: JSON.stringify(body) }, "OpenRouter transcription", 180000, signal);
+    return normalizeTranscription(res);
+  }
   const fd = new FormData();
   fd.append("file", blob, `audio.${blob.type.includes("wav") ? "wav" : "mp3"}`);
   fd.append("model", "whisper-1"); fd.append("response_format", "verbose_json"); fd.append("timestamp_granularities[]", "word");
@@ -380,7 +457,19 @@ export async function transcribeWithTimestamps({ blob, language, credentials, si
   if (prompt) fd.append("prompt", prompt.slice(0, 800));
   const headers = authHeaders("openai", creds); delete headers["Content-Type"];
   const res = await fetchJson(`${openAiBase("openai", creds)}/audio/transcriptions`, { method: "POST", headers, body: fd }, "OpenAI Whisper", 180000, signal);
-  return { words: (res.words ?? []).map((w) => ({ word: w.word, start: w.start, end: w.end })), duration: res.duration ?? (res.words?.at(-1)?.end ?? 0), text: res.text ?? "" };
+  return normalizeTranscription(res);
+}
+/** Uniformise une réponse verbose_json : mots natifs, sinon mots répartis dans chaque segment. */
+function normalizeTranscription(res) {
+  let words = (res.words ?? []).map((w) => ({ word: w.word, start: w.start, end: w.end }));
+  if (!words.length && Array.isArray(res.segments)) {
+    for (const seg of res.segments) {
+      const toks = String(seg.text ?? "").trim().split(/\s+/).filter(Boolean); if (!toks.length) continue;
+      const total = toks.reduce((n, t) => n + t.length + 1, 0); let t0 = seg.start ?? 0; const dur = (seg.end ?? t0) - t0;
+      for (const tk of toks) { const d = dur * ((tk.length + 1) / total); words.push({ word: tk, start: t0, end: t0 + d }); t0 += d; }
+    }
+  }
+  return { words, duration: res.duration ?? (words.at(-1)?.end ?? 0), text: res.text ?? "" };
 }
 
 // ── Génération / retouche d'images ───────────────────────────────────────
@@ -412,6 +501,19 @@ export async function generateImage({ modelId, prompt, referenceImages = [], asp
     const part = res.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
     if (!part) throw new ProviderError("Aucune image renvoyée par Google", { retryable: true });
     return imageFromB64(part.inlineData.data, part.inlineData.mimeType || "image/jpeg");
+  }
+  if (provider === "openrouter") {
+    if (!hasCredentials("openrouter", creds)) throw new ProviderError(missingKeyMessage("openrouter", modelId), { status: 401, provider });
+    const content = [{ type: "text", text: prompt }];
+    for (const ref of referenceImages) content.push({ type: "image_url", image_url: { url: `data:${ref.blob.type || "image/png"};base64,${await blobToB64(ref.blob)}` } });
+    const body = { model: model || PROVIDER_BY_ID.openrouter.defaultModels.image, messages: [{ role: "user", content }], modalities: ["image", "text"], ...(aspectRatio ? { image_config: { aspect_ratio: nearestGoogleRatio(aspectRatio) } } : {}) };
+    const res = await fetchJson(`${openAiBase("openrouter", creds)}/chat/completions`, { method: "POST", headers: authHeaders("openrouter", creds), body: JSON.stringify(body) }, "OpenRouter images", 180000, signal);
+    const img = res.choices?.[0]?.message?.images?.[0];
+    const url = img?.image_url?.url ?? img?.url ?? (typeof img === "string" ? img : null);
+    if (!url) throw new ProviderError(`Aucune image renvoyée par OpenRouter (${body.model})`, { retryable: true });
+    if (url.startsWith("data:")) return imageFromB64(stripDataUrl(url), mimeOf(url));
+    const blob = await fetchBlob(url, {}, "OpenRouter images", signal);
+    return { blob, mime: blob.type || "image/png" };
   }
   throw new ProviderError(`La génération d'images n'est pas prise en charge pour ${provider}`);
 }

@@ -20,19 +20,25 @@ async function renderStats(ctx, body) {
 async function renderLogs(ctx, body) {
   let step = "", page = 0; const PAGE = 25;
   const list = h("div", { class: "stack", style: { gap: "6px" } });
-  const steps = [...new Set((await ctx.storage.getAllLlmLogs()).map((l) => l.step))].sort();
+  const allLogs = await ctx.storage.getAllLlmLogs();
+  const steps = [...new Set(allLogs.map((l) => l.step))].sort();
+  // Synthèse : modèles demandés et modèles effectivement servis
+  const byModel = new Map();
+  for (const l of allLogs) { const d = l.data ?? {}; const key = d.servedModel ? `${d.model} → servi : ${d.servedModel}` : (d.model ?? "?"); byModel.set(key, (byModel.get(key) ?? 0) + 1); }
+  body.appendChild(h("div", { class: "card" }, h("div", { class: "card-body stack", style: { gap: "4px" } }, h("div", { class: "row between" }, h("strong", {}, "Modèles utilisés"), h("span", { class: "muted small" }, "fournisseur:modèle demandé, et modèle servi quand le fournisseur en renvoie un autre")), ...[...byModel.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => h("div", { class: "row small" }, h("code", {}, k), h("span", { class: "muted" }, `${n} appel${n > 1 ? "s" : ""}`))))));
   const render = async () => {
     clear(list); const { total, logs } = await ctx.storage.getLlmLogs({ step: step || undefined, limit: PAGE, offset: page * PAGE });
     list.appendChild(h("div", { class: "row between" }, h("span", { class: "muted small" }, `${total} appels`), h("div", { class: "row" }, button("Précédent", { size: "sm", variant: "ghost", disabled: page === 0, onClick: () => { page--; render(); } }), h("span", { class: "small" }, `${page + 1} / ${Math.max(1, Math.ceil(total / PAGE))}`), button("Suivant", { size: "sm", variant: "ghost", disabled: (page + 1) * PAGE >= total, onClick: () => { page++; render(); } }))));
     for (const l of logs) {
       const d = l.data ?? {};
-      list.appendChild(h("details", { class: "log-entry" }, h("summary", {}, badge(l.success ? "OK" : "Échec", l.success ? "success" : "danger"), h("strong", {}, l.step), h("span", { class: "muted" }, l.itemId), h("span", { class: "grow" }), d.cached ? badge("cache", "accent") : null, h("span", { class: "muted small" }, d.model), h("span", { class: "muted small" }, formatDuration(d.durationMs)), d.usage ? h("span", { class: "muted small" }, `${d.usage.input}↑ ${d.usage.output}↓`) : null, d.cost ? h("span", { class: "muted small" }, formatCost(d.cost)) : null, h("span", { class: "muted small" }, formatDate(l.timestamp))),
+      list.appendChild(h("details", { class: "log-entry" }, h("summary", {}, badge(l.success ? "OK" : "Échec", l.success ? "success" : "danger"), h("strong", {}, l.step), h("span", { class: "muted" }, l.itemId), h("span", { class: "grow" }), d.cached ? badge("cache", "accent") : null, h("span", { class: "muted small", title: d.requestedModel ? `Demandé : ${d.requestedModel}` : "" }, d.model, d.servedModel ? h("span", { class: "muted small", title: "Modèle effectivement servi par le fournisseur" }, ` → servi : ${d.servedModel}`) : null), h("span", { class: "muted small" }, formatDuration(d.durationMs)), d.usage ? h("span", { class: "muted small" }, `${d.usage.input}↑ ${d.usage.output}↓`) : null, d.cost ? h("span", { class: "muted small" }, formatCost(d.cost)) : null, h("span", { class: "muted small" }, formatDate(l.timestamp))),
         h("div", { class: "stack", style: { marginTop: "8px" } }, d.promptName ? h("div", { class: "small" }, "Prompt : ", h("code", {}, d.promptName), " · tentatives : ", d.attempts ?? 1) : null, d.errors?.length ? h("div", { class: "callout callout-danger small" }, h("ul", { style: { margin: 0 } }, d.errors.map((e) => h("li", {}, `Tentative ${e.attempt} (${e.kind}) : ${e.message}`)))) : null,
           h("details", {}, h("summary", { class: "small" }, "Messages envoyés"), ...(d.messages ?? []).map((m) => h("div", { class: "stack", style: { gap: "2px", marginTop: "6px" } }, badge(m.role), ...m.parts.map((p) => p.type === "image" ? h("span", { class: "muted small" }, `[image ~${Math.round((p.bytes ?? 0) / 1024)} Ko]`) : h("pre", { class: "code" }, p.text))))),
           h("details", { open: !l.success }, h("summary", { class: "small" }, "Réponse"), h("pre", { class: "code" }, d.response ?? "—"), button("Copier", { size: "sm", variant: "ghost", iconName: "copy", onClick: () => copyToClipboard(d.response ?? "") })))));
     }
   };
-  body.appendChild(h("div", { class: "row" }, select([["", "Toutes les sous-étapes"], ...steps.map((s) => [s, s])], step, { onChange: (v) => { step = v; page = 0; render(); }, attrs: { style: "width:auto" } })), list);
+  body.appendChild(h("div", { class: "row" }, select([["", "Toutes les sous-étapes"], ...steps.map((s) => [s, s])], step, { onChange: (v) => { step = v; page = 0; render(); }, attrs: { style: "width:auto" } })));
+  body.appendChild(list);
   await render();
 }
 function renderConfig(ctx, body) { body.appendChild(h("div", { class: "stack" }, h("p", { class: "muted small" }, "Configuration effective = défauts ⊕ réglages globaux ⊕ réglages du livre."), h("div", { class: "row" }, button("Copier", { size: "sm", variant: "secondary", iconName: "copy", onClick: () => copyToClipboard(JSON.stringify(ctx.config, null, 2)) }), button("Télécharger", { size: "sm", variant: "secondary", iconName: "download", onClick: () => downloadBlob(new Blob([JSON.stringify(ctx.config, null, 2)], { type: "application/json" }), `${ctx.label}-config.json`) })), h("pre", { class: "code", style: { maxHeight: "70vh" } }, JSON.stringify(ctx.config, null, 2)), h("h3", {}, "Surcharges du livre"), h("pre", { class: "code" }, JSON.stringify(ctx.book.config ?? {}, null, 2)))); }

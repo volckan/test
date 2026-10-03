@@ -50,8 +50,14 @@ Les appels sont faits **directement depuis le navigateur** avec vos propres clé
 - OpenAI (texte structuré, synthèse vocale, horodatage Whisper, génération d'images)
 - Anthropic (Claude, via l'accès direct navigateur)
 - Google Gemini (texte structuré, synthèse vocale, images)
-- Mistral AI, OpenRouter, tout point d'accès compatible OpenAI, Ollama (local)
+- OpenRouter (texte et vision, génération d'images, synthèse vocale, transcription Whisper : une seule clé
+  suffit pour tout le pipeline)
+- Mistral AI, tout point d'accès compatible OpenAI, Ollama (local)
 - ElevenLabs (voix avec alignement des mots), Azure Speech (SSML)
+
+Les étapes de parole choisissent leur fournisseur dans les réglages « Parole » du livre (fournisseur par
+défaut, modèle, source des horodatages de mots). Si aucune clé n'existe pour le fournisseur demandé, le
+premier fournisseur configuré pour la même tâche est utilisé et une notification le signale.
 
 ## Utilisation
 
@@ -73,6 +79,10 @@ Les appels sont faits **directement depuis le navigateur** avec vos propres clé
    exports.
 
 Raccourcis : `Ctrl+K` palette de commandes, `Ctrl+Shift+D` vue de débogage du livre.
+
+**Savoir quel modèle a été utilisé** : la vue de débogage, onglet « Journaux LLM », résume les modèles
+par nombre d'appels et liste chaque appel avec le modèle demandé, le modèle effectivement servi par le
+fournisseur quand il diffère (fréquent avec OpenRouter), les jetons, le coût estimé et la réponse brute.
 
 ## Hébergement sur GitHub Pages
 

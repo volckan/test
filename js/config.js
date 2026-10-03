@@ -183,7 +183,7 @@ export const DEFAULT_CONFIG = {
     batch_by_page: false,
     excluded_categories: [],
     excluded_text_ids: [],
-    providers: { openai: { model: DEFAULT_SPEECH_MODEL_ID }, gemini: { model: "gemini-2.5-flash-preview-tts" }, elevenlabs: { model: "eleven_multilingual_v2" }, azure: {} },
+    providers: { openai: { model: DEFAULT_SPEECH_MODEL_ID }, gemini: { model: "gemini-2.5-flash-preview-tts" }, elevenlabs: { model: "eleven_multilingual_v2" }, azure: {}, openrouter: { model: "openai/gpt-4o-mini-tts" } },
     primary_voices: {},
     secondary_voices: {},
     elevenlabs_stability: 0.7, elevenlabs_similarity_boost: 0.5, elevenlabs_style: 0, elevenlabs_use_speaker_boost: true,
@@ -224,6 +224,7 @@ export const DEFAULT_VOICES = {
   openai: { default: "alloy", en: "alloy", fr: "coral", es: "coral", pt: "coral", "pt-br": "coral", de: "coral", it: "coral", ar: "coral", sq: "coral" },
   azure: { default: "en-US-JennyNeural", fr: "fr-FR-DeniseNeural", "fr-ca": "fr-CA-SylvieNeural", en: "en-US-JennyNeural", es: "es-MX-DaliaNeural", "es-es": "es-ES-ElviraNeural", pt: "pt-PT-RaquelNeural", "pt-br": "pt-BR-FranciscaNeural", de: "de-DE-KatjaNeural", it: "it-IT-ElsaNeural", ar: "ar-SA-ZariyahNeural", sq: "sq-AL-AnilaNeural", sw: "sw-KE-ZuriNeural", wo: "en-US-JennyNeural" },
   gemini: { default: "Kore" },
+  openrouter: { default: "alloy", en: "alloy", fr: "coral", es: "coral", pt: "coral", "pt-br": "coral", de: "coral", it: "coral" },
   elevenlabs: { default: DEFAULT_ELEVENLABS_VOICE_ID, "es-uy": "QK4xDwo9ESPHA4JNUpX3" },
 };
 

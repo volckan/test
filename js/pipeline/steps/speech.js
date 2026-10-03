@@ -1,5 +1,5 @@
 // Étape « Parole » : synthèse vocale par entrée de catalogue et horodatages de mots.
-import { synthesizeSpeech, transcribeWithTimestamps, hasCredentials } from "../../llm/providers.js";
+import { synthesizeSpeech, transcribeWithTimestamps, hasCredentials, transcriptionProvider } from "../../llm/providers.js";
 import { getCredentials } from "../../storage.js";
 import { nowIso, baseLanguage, processWithConcurrency, sha256, tokenizeWords, sleep } from "../../util.js";
 import { getSetting } from "../../db.js";
@@ -38,7 +38,7 @@ export function resolveProvider(config, lang, credentials) {
   const def = sp.default_provider ?? "openai";
   const credKey = def === "gemini" ? "google" : def;
   if (hasCredentials(credKey, credentials)) return def;
-  for (const p of ["openai", "elevenlabs", "google", "azure"]) if (hasCredentials(p, credentials)) return p === "google" ? "gemini" : p;
+  for (const p of ["openai", "elevenlabs", "google", "azure", "openrouter"]) if (hasCredentials(p, credentials)) return p === "google" ? "gemini" : p;
   return def;
 }
 
@@ -56,7 +56,7 @@ export async function synthesizeEntry({ storage, config, lang, entry, slot = "pr
   const v = voiceOverride ?? (await resolveVoice({ provider, lang, config, slot }));
   if (!v) return null;
   const prov = v.provider ?? provider;
-  const model = v.model ?? sp.providers?.[prov]?.model ?? (prov === "openai" ? (config.default_speech_generation_model ?? "gpt-4o-mini-tts") : prov === "elevenlabs" ? "eleven_multilingual_v2" : prov === "gemini" ? "gemini-2.5-flash-preview-tts" : "neural");
+  const model = v.model ?? sp.providers?.[prov]?.model ?? (prov === "openai" ? (config.default_speech_generation_model ?? "gpt-4o-mini-tts") : prov === "elevenlabs" ? "eleven_multilingual_v2" : prov === "gemini" ? "gemini-2.5-flash-preview-tts" : prov === "openrouter" ? "openai/gpt-4o-mini-tts" : "neural");
   const instructions = await speechInstructions(lang);
   const res = await synthesizeSpeech({ provider: prov, model, voice: v.voice, text: entry.speechText ?? entry.text, language: lang, instructions, format: sp.format ?? "mp3", credentials, signal, options: { stability: sp.elevenlabs_stability, similarity_boost: sp.elevenlabs_similarity_boost, style: sp.elevenlabs_style, use_speaker_boost: sp.elevenlabs_use_speaker_boost, speed: sp.elevenlabs_speed, apply_text_normalization: sp.elevenlabs_apply_text_normalization, temperature: sp.temperature, seed: sp.seed } });
   const fileName = `${entry.id}${slot === "secondary" ? "--secondary" : ""}.${res.ext}`;
@@ -138,7 +138,7 @@ export async function wordTimestamps(ctx) {
   const { storage, config } = ctx;
   if (config.speech?.word_highlighting === false) return { skipped: true, message: "Surlignage par phrase (désactivé)" };
   const credentials = await getCredentials();
-  const whisper = hasCredentials("openai", credentials);
+  const whisper = transcriptionProvider(credentials, config.speech?.transcription_provider);
   const langs = await outputLanguages(storage, config);
   const jobs = [];
   for (const lang of langs) {
@@ -163,14 +163,14 @@ export async function wordTimestamps(ctx) {
       if (!blob) return;
       let words = null, duration = 0;
       if (job.e.alignment?.length) { words = job.e.alignment; duration = words[words.length - 1].end; }
-      else if (whisper) { try { const r = await transcribeWithTimestamps({ blob, language: job.lang, credentials, signal: ctx.signal, prompt: job.text }); words = r.words; duration = r.duration; } catch (err) { if (err?.name === "AbortError") throw err; console.warn("whisper", err); } }
+      else if (whisper) { try { const r = await transcribeWithTimestamps({ blob, language: job.lang, credentials, signal: ctx.signal, prompt: job.text, provider: whisper, model: config.speech?.transcription_model }); words = r.words; duration = r.duration; } catch (err) { if (err?.name === "AbortError") throw err; console.warn("whisper", err); } }
       if (!words?.length) { duration = duration || (await audioDuration(blob)); words = estimateTimestamps(job.text, duration); estimated++; }
       job.entries[job.key] = { textId: job.e.textId, language: job.lang, words, duration, voiceSlot: job.e.voiceSlot ?? "primary", textHash: job.e.textHash, method: job.e.alignment?.length ? "elevenlabs" : whisper && !estimated ? "whisper" : "estimated" };
     } catch (e) { if (e?.name === "AbortError") throw e; await ctx.onPageError(job.key, e); }
     done++; ctx.progress(done, work.length);
   }, { signal: ctx.signal });
   for (const f of jobs.filter((j) => j.finalize)) await storage.putNodeData("tts-timestamps", f.lang, { language: f.lang, entries: f.entries, failed: f.failed, generatedAt: nowIso() });
-  return { message: `${work.length} horodatages${estimated ? ` (${estimated} estimés)` : ""}${!whisper ? " · ajoutez une clé OpenAI pour des horodatages Whisper précis" : ""}` };
+  return { message: `${work.length} horodatages${estimated ? ` (${estimated} estimés)` : ""}${!whisper ? " · ajoutez une clé OpenAI ou OpenRouter pour des horodatages Whisper précis" : ""}` };
 }
 
 export const speechSteps = { tts, "word-timestamps": wordTimestamps };

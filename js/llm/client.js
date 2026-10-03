@@ -77,7 +77,7 @@ export async function callLLM(o) {
     if (cached) {
       const errors = validate ? await validate(cached.parsed) : [];
       if (!errors?.length) {
-        await storage.appendLlmLog({ requestId, step, itemId, success: 1, errorCount: 0, data: { model: modelId, promptName, cached: true, hash, durationMs: Date.now() - started, usage: cached.usage ?? { input: 0, output: 0 }, cost: 0, messages: messagesForLog(messages), response: cached.rawText, parsed: cached.parsed, errors: [] } });
+        await storage.appendLlmLog({ requestId, step, itemId, success: 1, errorCount: 0, data: { model: modelId, servedModel: cached.model && cached.model !== parseModelId(modelId).model ? cached.model : undefined, promptName, cached: true, hash, durationMs: Date.now() - started, usage: cached.usage ?? { input: 0, output: 0 }, cost: 0, messages: messagesForLog(messages), response: cached.rawText, parsed: cached.parsed, errors: [] } });
         llmEvents.emit("call", { label: storage.label, step, itemId, cached: true });
         return { ...cached, cached: true, requestId };
       }
@@ -107,7 +107,7 @@ export async function callLLM(o) {
       const result = { parsed: res.parsed, rawText: res.rawText, usage: totalUsage, model: res.model, cost, cached: false, requestId, attempts: attempt };
       if (storage) {
         await storage.cacheSet(hash, { parsed: res.parsed, rawText: res.rawText, usage: totalUsage, model: res.model, cost }, { step, itemId, promptName });
-        await storage.appendLlmLog({ requestId, step, itemId, success: 1, errorCount: errors.length, data: { model: modelId, promptName, cached: false, hash, durationMs: Date.now() - started, usage: totalUsage, cost, attempts: attempt, messages: messagesForLog(messages), response: res.rawText, parsed: res.parsed, errors } });
+        await storage.appendLlmLog({ requestId, step, itemId, success: 1, errorCount: errors.length, data: { model: modelId, requestedModel: requestedModelId !== modelId ? requestedModelId : undefined, servedModel: res?.model && res.model !== parseModelId(modelId).model ? res.model : undefined, promptName, cached: false, hash, durationMs: Date.now() - started, usage: totalUsage, cost, attempts: attempt, messages: messagesForLog(messages), response: res.rawText, parsed: res.parsed, errors } });
         llmEvents.emit("call", { label: storage.label, step, itemId, cached: false, cost, usage: totalUsage });
       }
       return result;
@@ -117,7 +117,7 @@ export async function callLLM(o) {
       errors.push({ attempt, kind: e instanceof ProviderError && e.status ? `http-${e.status}` : "error", message: e.message });
       if (e.status === 429) rateLimiter.backoff();
       if (!retryable || attempt > maxRetries) {
-        if (storage) await storage.appendLlmLog({ requestId, step, itemId, success: 0, errorCount: errors.length, data: { model: modelId, promptName, cached: false, hash, durationMs: Date.now() - started, usage: totalUsage, cost: estimateCost(modelId, totalUsage.input, totalUsage.output), attempts: attempt, messages: messagesForLog(messages), response: null, errors } });
+        if (storage) await storage.appendLlmLog({ requestId, step, itemId, success: 0, errorCount: errors.length, data: { model: modelId, requestedModel: requestedModelId !== modelId ? requestedModelId : undefined, promptName, cached: false, hash, durationMs: Date.now() - started, usage: totalUsage, cost: estimateCost(modelId, totalUsage.input, totalUsage.output), attempts: attempt, messages: messagesForLog(messages), response: null, errors } });
         llmEvents.emit("error", { label: storage?.label, step, itemId, message: e.message });
         throw e;
       }
