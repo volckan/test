@@ -275,10 +275,31 @@ async function fetchOpenRouterModels(creds, kind) {
   return list.map((m) => m.id).filter(Boolean).sort();
 }
 
+const OPENROUTER_FETCHED_KINDS = new Set();
+async function ensureOpenRouterCatalog(credentials, kind) {
+  if (OPENROUTER_FETCHED_KINDS.has(kind) || !hasCredentials("openrouter", credentials)) return;
+  try { await fetchOpenRouterModels(credentials, kind); OPENROUTER_FETCHED_KINDS.add(kind); } catch (e) { console.warn("OpenRouter catalogue", e); }
+}
 /** Voix prises en charge par un modèle de parole OpenRouter (liste vide si inconnue). */
 export async function openRouterVoices(model, credentials) {
-  if (!OPENROUTER_MODEL_INFO.has(model) && hasCredentials("openrouter", credentials)) { try { await fetchOpenRouterModels(credentials, "tts"); } catch (e) { console.warn("openRouterVoices", e); } }
+  if (!OPENROUTER_MODEL_INFO.has(model)) await ensureOpenRouterCatalog(credentials, "tts");
   return OPENROUTER_MODEL_INFO.get(model)?.voices ?? [];
+}
+/** Identifiants des modèles OpenRouter d'une modalité déjà consultés. */
+export function openRouterModelsOf(kind) {
+  const want = OPENROUTER_OUTPUT_MODALITY[kind] ?? "text";
+  return [...OPENROUTER_MODEL_INFO.entries()].filter(([, v]) => (v.output ?? []).includes(want)).map(([id]) => id);
+}
+/**
+ * Modèle de parole OpenRouter réellement disponible : le modèle demandé s'il figure au catalogue, sinon sa
+ * variante datée (ex. openai/gpt-4o-mini-tts → openai/gpt-4o-mini-tts-2025-12-15), sinon le premier modèle de parole.
+ */
+export async function resolveOpenRouterSpeechModel(model, credentials) {
+  await ensureOpenRouterCatalog(credentials, "tts");
+  const speech = openRouterModelsOf("tts");
+  if (!speech.length || speech.includes(model)) return model;
+  const variant = speech.find((id) => id.startsWith(`${model}-`) || id.split("/").pop() === model.split("/").pop());
+  return variant ?? speech.find((id) => id.startsWith("openai/")) ?? speech[0];
 }
 
 export async function listModels(provider, credentials, kind = "structured-text") {
@@ -286,7 +307,7 @@ export async function listModels(provider, credentials, kind = "structured-text"
   if (!p) return [];
   try {
     if (provider === "openrouter" && hasCredentials(provider, creds)) {
-      const ids = await fetchOpenRouterModels(creds, kind);
+      const ids = await fetchOpenRouterModels(creds, kind); OPENROUTER_FETCHED_KINDS.add(kind);
       return kind === "structured-text" ? ids.filter((id) => (OPENROUTER_MODEL_INFO.get(id)?.output ?? ["text"]).includes("text")) : ids;
     }
     if (["openai", "mistral", "custom", "ollama"].includes(provider) && hasCredentials(provider, creds)) {
@@ -347,7 +368,7 @@ export async function synthesizeSpeech({ provider, model, voice, text, language,
   }
   if (provider === "openrouter") {
     if (!hasCredentials("openrouter", creds)) throw new ProviderError("Clé OpenRouter absente pour la synthèse vocale. Ajoutez-la dans Paramètres → Fournisseurs IA ou choisissez un autre fournisseur de parole dans Paramètres → Parole.", { status: 401, provider });
-    const m = model || PROVIDER_BY_ID.openrouter.defaultModels.tts;
+    const m = await resolveOpenRouterSpeechModel(model || PROVIDER_BY_ID.openrouter.defaultModels.tts, creds);
     const v = await pickOpenRouterVoice(m, voice, language, creds);
     const body = { model: m, input: text, voice: v, response_format: format === "wav" ? "wav" : "mp3" };
     if (options.speed) body.speed = options.speed;
@@ -529,7 +550,11 @@ function imageFromB64(b64, mime) { if (!b64) throw new ProviderError("Image vide
 async function fetchBlob(url, init, label, signal) {
   let res;
   try { res = await fetch(url, { ...init, signal }); } catch (e) { if (signal?.aborted) throw e; throw new ProviderError(`${label} : requête impossible (${e.message})`, { retryable: true }); }
-  if (!res.ok) { const t = await res.text(); throw new ProviderError(`${label} : HTTP ${res.status} — ${t.slice(0, 300)}`, { status: res.status, retryable: res.status === 429 || res.status >= 500 }); }
+  if (!res.ok) {
+    const t = await res.text(); let msg = t.slice(0, 300);
+    try { const j = JSON.parse(t); const m = j?.error?.message ?? j?.message ?? j?.error; if (m) msg = typeof m === "string" ? m : JSON.stringify(m); } catch { /* texte brut */ }
+    throw new ProviderError(`${label} : HTTP ${res.status} — ${msg}`, { status: res.status, retryable: res.status === 429 || res.status >= 500, body: t });
+  }
   return res.blob();
 }
 export function b64ToBytes(b64) { const bin = atob(b64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); return arr; }

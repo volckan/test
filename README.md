@@ -55,8 +55,10 @@ Les appels sont faits **directement depuis le navigateur** avec vos propres clé
 - Mistral AI, tout point d'accès compatible OpenAI, Ollama (local)
 - ElevenLabs (voix avec alignement des mots), Azure Speech (SSML)
 
-Les étapes de parole choisissent leur fournisseur dans les réglages « Parole » du livre (fournisseur par
-défaut, modèle, source des horodatages de mots). Si aucune clé n'existe pour le fournisseur demandé, le
+Les étapes de parole choisissent leur fournisseur dans les réglages « Parole » du livre : fournisseur,
+modèle de parole (liste lue en direct depuis l'API du fournisseur, par exemple tous les modèles de
+synthèse vocale d'OpenRouter), voix par défaut parmi celles que le modèle accepte, source des horodatages
+de mots. Si aucune clé n'existe pour le fournisseur demandé, le
 premier fournisseur configuré pour la même tâche est utilisé et une notification le signale.
 
 ## Utilisation
