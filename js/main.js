@@ -4,6 +4,7 @@ import { h, clear, icon, toast, dialog, button } from "./ui/dom.js";
 import { getSetting, setSetting, openDb, requestPersistence } from "./db.js";
 import { listBooks, bookEvents, getUiPrefs, bookSummary } from "./storage.js";
 import { runEvents } from "./pipeline/runner.js";
+import { llmEvents } from "./llm/client.js";
 import { STAGE_BY_NAME, PIPELINE } from "./pipeline.js";
 import { renderAppLayout } from "./ui/app-layout.js";
 import { openCommandPalette } from "./ui/command-palette.js";
@@ -44,6 +45,7 @@ routerEvents.on("notfound", ({ path }) => { clear(app); app.appendChild(renderAp
 routerEvents.on("error", ({ error }) => { toast(error.message ?? String(error), { kind: "error", title: "Erreur" }); clear(app); app.appendChild(renderAppLayout(h("div", { class: "empty" }, h("h3", {}, "Une erreur est survenue"), h("pre", { class: "code" }, String(error?.stack ?? error)), button("Retour à l'accueil", { onClick: () => navigate("/") })))); });
 
 // ── Notifications d'exécution ────────────────────────────────────────────────
+llmEvents.on("fallback", ({ from, to }) => toast(`Aucune clé pour le modèle ${from} : ${to} est utilisé à sa place. Réglez le modèle par défaut dans Paramètres → Modèles.`, { kind: "warning", title: "Fournisseur de repli", duration: 10000 }));
 const stageLabel = (s) => STAGE_BY_NAME[s]?.label ?? s;
 runEvents.on("complete", async ({ label, aborted, errors, stages }) => {
   const prefs = await getUiPrefs();

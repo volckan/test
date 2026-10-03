@@ -8,7 +8,7 @@ import { validateSectionHtml, sanitizeHtml } from "../../pipeline/validate-html.
 import { toRenderNodes, leafTexts, imageRefs, groupIds, sectionText } from "../../pipeline/section-tree.js";
 import { callLLM } from "../../llm/client.js";
 import { SCHEMAS, stepModel, languageContext, bookLanguage, pageImageForLlm } from "../../pipeline/steps/common.js";
-import { generateImage } from "../../llm/providers.js";
+import { generateImage, resolveUsableModel } from "../../llm/providers.js";
 import { getCredentials } from "../../storage.js";
 import { imageDimensions, nowIso, pad3 } from "../../util.js";
 import { renderPrompt } from "../../llm/prompt-engine.js";
@@ -147,7 +147,7 @@ async function aiImage(ctx, page, sec, r, rendering) {
       const refBlob = target.value ? await ctx.storage.getImageBlob(target.value) : null; const refMeta = target.value ? await ctx.storage.getImage(target.value) : null;
       const tpl = await getPromptSource(target.value ? "ai_image_edit" : "ai_image_generation", { label: ctx.label });
       const text = renderPrompt(tpl, { prompt: prompt.value, image_type: typeSel.value, book_summary: summary, aspect_ratio: refMeta ? `${refMeta.width}:${refMeta.height}` : "4:3" }).text;
-      const out = await generateImage({ modelId: ctx.config.default_image_generation_model ?? "openai:gpt-image-2", prompt: text, referenceImages: refBlob ? [{ blob: refBlob }] : [], aspectRatio: refMeta ? refMeta.width / refMeta.height : 4 / 3, credentials });
+      const out = await generateImage({ modelId: resolveUsableModel(ctx.config.default_image_generation_model ?? "openai:gpt-image-2", credentials, "image").modelId, prompt: text, referenceImages: refBlob ? [{ blob: refBlob }] : [], aspectRatio: refMeta ? refMeta.width / refMeta.height : 4 / 3, credentials });
       const dims = await imageDimensions(out.blob);
       const existing = (await ctx.storage.getPageImages(page.pageId)).length;
       const id = target.value ? `${target.value}_ai${Date.now().toString(36)}` : `${page.pageId}_im${pad3(existing + 1)}`;

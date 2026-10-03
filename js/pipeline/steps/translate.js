@@ -1,6 +1,6 @@
 // Étape « Traduire » : traduction du catalogue, normalisation TTS, traduction d'images.
 import { callLLM } from "../../llm/client.js";
-import { generateImage } from "../../llm/providers.js";
+import { generateImage, resolveUsableModel } from "../../llm/providers.js";
 import { getCredentials } from "../../storage.js";
 import { nowIso, baseLanguage, processWithConcurrency, imageDimensions } from "../../util.js";
 import { languageContext, stepModel, stepTimeout, SCHEMAS, sourceLanguage, bookLanguage } from "./common.js";
@@ -139,7 +139,7 @@ export async function imageTranslation(ctx) {
       const { renderPrompt } = await import("../../llm/prompt-engine.js");
       const { getPromptSource } = await import("../../llm/prompts.js");
       const prompt = renderPrompt(await getPromptSource(it.prompt ?? "image_translation", { label: storage.label }), { target_language: languageName(lang), texts, caption: cap }).text;
-      const out = await generateImage({ modelId, prompt, referenceImages: [{ blob }], aspectRatio: im.width / im.height, credentials, signal: ctx.signal });
+      const out = await generateImage({ modelId: resolveUsableModel(modelId, credentials, "image").modelId, prompt, referenceImages: [{ blob }], aspectRatio: im.width / im.height, credentials, signal: ctx.signal });
       const dims = await imageDimensions(out.blob);
       await storage.putImage({ imageId: variantId, pageId: im.pageId, width: dims.width, height: dims.height, source: "translate", renderMethod: "raster", bounds: im.bounds, parentImageId: imageId, language: lang, mime: out.mime }, out.blob);
       await storage.appendLlmLog({ requestId: variantId, step: "image-translation", itemId: imageId, success: 1, errorCount: 0, data: { model: modelId, promptName: "image_translation", messages: [{ role: "user", parts: [{ type: "text", text: prompt }] }], response: `image ${dims.width}×${dims.height}`, usage: { input: 0, output: 0 } } });

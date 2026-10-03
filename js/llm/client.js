@@ -1,12 +1,13 @@
 // Client LLM : rendu du prompt, cache par hachage des entrées, journal inspectable,
 // nouvelles tentatives avec validation, limitation de débit, suivi des coûts.
-import { chatStructured, estimateCost, parseModelId, ProviderError } from "./providers.js";
+import { chatStructured, estimateCost, parseModelId, ProviderError, resolveUsableModel } from "./providers.js";
 import { renderPrompt } from "./prompt-engine.js";
 import { getPromptSource, getPartials } from "./prompts.js";
 import { getCredentials } from "../storage.js";
 import { sha256, uuid, sleep, Emitter } from "../util.js";
 
 export const llmEvents = new Emitter();
+const fallbackNotified = new Set();
 
 class RateLimiter {
   constructor() { this.timestamps = []; this.rpm = Infinity; }
@@ -49,10 +50,14 @@ function messagesForLog(messages) {
 export async function callLLM(o) {
   const { storage, step = "", itemId = "", promptName, variables = {}, schema, validate, signal } = o;
   const config = o.config ?? {};
-  const modelId = o.modelId ?? config.default_model ?? "openai:gpt-5.4";
+  const requestedModelId = o.modelId ?? config.default_model ?? "openai:gpt-5.4";
   const maxRetries = o.maxRetries ?? 5;
   const timeoutMs = (o.timeoutMs ?? 180) > 10000 ? o.timeoutMs : (o.timeoutMs ?? 180) * 1000;
   const credentials = await getCredentials();
+  // Repli : si le fournisseur du modèle demandé n'a pas de clé, on utilise le premier fournisseur configuré.
+  const usable = resolveUsableModel(requestedModelId, credentials, "structured-text");
+  const modelId = usable.modelId;
+  if (usable.fallback && !fallbackNotified.has(usable.from)) { fallbackNotified.add(usable.from); llmEvents.emit("fallback", { from: usable.from, to: usable.to, step }); console.warn(`Modèle ${usable.from} sans clé : utilisation de ${usable.to}`); }
   rateLimiter.configure(config.rate_limit?.requests_per_minute);
 
   let messages = o.messages;

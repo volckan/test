@@ -61,7 +61,10 @@ Les appels sont faits **directement depuis le navigateur** avec vos propres clé
    python3 -m http.server 8000
    # puis http://localhost:8000/
    ```
-2. Dans **Paramètres → Fournisseurs**, saisissez vos clés API et testez la connexion.
+2. Dans **Paramètres → Fournisseurs IA**, saisissez vos clés API et testez la connexion. Le modèle par défaut
+   est `openai:gpt-5.4` ; si vous n'enregistrez qu'un autre fournisseur (OpenRouter, Anthropic, Gemini…), le
+   modèle par défaut bascule automatiquement sur ce fournisseur. Vous pouvez le changer à tout moment dans
+   **Paramètres → Modèles**, globalement ou par étape.
 3. **Ajouter un livre** : déposez un PDF, renseignez le titre, la langue et les options, puis lancez
    l'extraction.
 4. Suivez les étapes dans la barre latérale (chaque étape propose un aperçu, une édition manuelle et

@@ -116,6 +116,32 @@ export function hasCredentials(provider, creds) {
   return p.fields.filter((f) => f.required).every((f) => String(c[f.key] ?? "").trim());
 }
 
+/** Fournisseurs disposant d'une clé pour une modalité donnée, dans l'ordre du manifeste. */
+export function configuredProviders(creds, modality = "structured-text") {
+  // Un fournisseur sans champ obligatoire (Ollama) ne compte comme configuré que si l'utilisateur a saisi quelque chose.
+  const explicit = (p) => p.fields.some((f) => f.required) || Object.values(creds?.[p.id] ?? {}).some((v) => String(v ?? "").trim());
+  return PROVIDERS.filter((p) => p.modalities.includes(modality) && hasCredentials(p.id, creds) && explicit(p));
+}
+
+/**
+ * Modèle effectivement utilisable : si le fournisseur du modèle demandé n'a pas de clé mais qu'un autre
+ * fournisseur de la même modalité en a une, on bascule sur son modèle par défaut.
+ * Retourne { modelId, fallback: bool, from, to }.
+ */
+export function resolveUsableModel(modelId, creds, modality = "structured-text") {
+  const { provider } = parseModelId(modelId);
+  if (hasCredentials(provider, creds)) return { modelId, fallback: false };
+  const alt = configuredProviders(creds, modality)[0];
+  if (!alt) return { modelId, fallback: false };
+  const to = qualifyModelId(alt.id, alt.defaultModels?.[modality] ?? alt.models?.[0] ?? "");
+  return { modelId: to, fallback: true, from: modelId, to };
+}
+
+export function missingKeyMessage(provider, modelId) {
+  const name = PROVIDER_BY_ID[provider]?.displayName ?? provider;
+  return `Aucune clé configurée pour ${name}${modelId ? ` (modèle « ${modelId} »)` : ""}. Ajoutez la clé dans Paramètres → Fournisseurs IA, ou choisissez un modèle d'un fournisseur déjà configuré dans Paramètres → Modèles.`;
+}
+
 /** Supprime les mots-clés JSON Schema non supportés par certains fournisseurs. */
 function sanitizeSchemaForGemini(schema) {
   if (Array.isArray(schema)) return schema.map(sanitizeSchemaForGemini);
@@ -168,7 +194,7 @@ export async function chatStructured({ modelId, messages, schema, temperature, m
   const { provider, model } = parseModelId(modelId);
   const creds = credentials ?? {};
   if (!PROVIDER_BY_ID[provider]) throw new ProviderError(`Fournisseur inconnu : ${provider}`);
-  if (!hasCredentials(provider, creds)) throw new ProviderError(`Aucune clé configurée pour ${PROVIDER_BY_ID[provider].displayName}. Ouvrez Paramètres → Fournisseurs IA.`, { provider, status: 401 });
+  if (!hasCredentials(provider, creds)) throw new ProviderError(missingKeyMessage(provider, modelId), { provider, status: 401 });
   const recursive = schema && schemaIsRecursive(schema);
   const schemaHint = schema ? `\n\nRéponds UNIQUEMENT avec un objet JSON valide conforme à ce schéma JSON (sans Markdown) :\n${JSON.stringify(schema)}` : "";
 
@@ -211,7 +237,18 @@ export async function chatStructured({ modelId, messages, schema, temperature, m
   }
   if (temperature !== undefined && !(provider === "openai" && noTemperature(model))) body.temperature = temperature;
   if (maxOutputTokens) { if (provider === "openai") body.max_completion_tokens = maxOutputTokens; else body.max_tokens = maxOutputTokens; }
-  const res = await fetchJson(`${base}/chat/completions`, { method: "POST", headers: authHeaders(provider, creds), body: JSON.stringify(body) }, PROVIDER_BY_ID[provider].displayName, timeoutMs, signal);
+  let res;
+  try {
+    res = await fetchJson(`${base}/chat/completions`, { method: "POST", headers: authHeaders(provider, creds), body: JSON.stringify(body) }, PROVIDER_BY_ID[provider].displayName, timeoutMs, signal);
+  } catch (e) {
+    // Certains modèles (passerelles OpenRouter, serveurs compatibles) refusent response_format json_schema :
+    // on réessaie en mode JSON libre avec le schéma rappelé dans le prompt.
+    const unsupported = useJsonSchema && e instanceof ProviderError && (e.status === 400 || e.status === 404 || e.status === 422) && /response_format|json_schema|structured|schema/i.test(`${e.message} ${JSON.stringify(e.body ?? "")}`);
+    if (!unsupported) throw e;
+    const last = oaMessages[oaMessages.length - 1]; if (Array.isArray(last.content)) last.content.push({ type: "text", text: schemaHint }); else last.content += schemaHint;
+    body.response_format = { type: "json_object" };
+    res = await fetchJson(`${base}/chat/completions`, { method: "POST", headers: authHeaders(provider, creds), body: JSON.stringify(body) }, PROVIDER_BY_ID[provider].displayName, timeoutMs, signal);
+  }
   const choice = res.choices?.[0];
   if (choice?.finish_reason === "length") throw new ProviderError("Réponse tronquée (limite de jetons atteinte)", { retryable: true });
   if (choice?.message?.refusal) throw new ProviderError(`Refus du modèle : ${choice.message.refusal}`);
@@ -276,7 +313,7 @@ async function listModelsStrict(provider, creds) {
 export async function synthesizeSpeech({ provider, model, voice, text, language, instructions, format = "mp3", credentials, signal, options = {} }) {
   const creds = credentials ?? {};
   if (provider === "openai") {
-    if (!hasCredentials("openai", creds)) throw new ProviderError("Clé OpenAI absente", { status: 401 });
+    if (!hasCredentials("openai", creds)) throw new ProviderError("Clé OpenAI absente pour la synthèse vocale. Ajoutez-la dans Paramètres → Fournisseurs IA ou choisissez un autre fournisseur de parole dans Paramètres → Parole.", { status: 401, provider });
     const body = { model: model || "gpt-4o-mini-tts", voice: voice || "alloy", input: text, response_format: format === "wav" ? "wav" : "mp3" };
     if (instructions && /gpt-4o-mini-tts|gpt-.*tts/.test(body.model)) body.instructions = instructions;
     if (options.speed) body.speed = options.speed;
@@ -353,7 +390,7 @@ export async function generateImage({ modelId, prompt, referenceImages = [], asp
   const { provider, model } = parseModelId(modelId);
   const creds = credentials ?? {};
   if (provider === "openai") {
-    if (!hasCredentials("openai", creds)) throw new ProviderError("Clé OpenAI absente", { status: 401 });
+    if (!hasCredentials("openai", creds)) throw new ProviderError(missingKeyMessage("openai", modelId), { status: 401, provider });
     const base = openAiBase("openai", creds);
     const sz = size ?? pickOpenAiSize(aspectRatio, model);
     if (referenceImages.length) {
@@ -367,7 +404,7 @@ export async function generateImage({ modelId, prompt, referenceImages = [], asp
     return imageFromB64(res.data?.[0]?.b64_json, "image/png");
   }
   if (provider === "google") {
-    if (!hasCredentials("google", creds)) throw new ProviderError("Clé Google absente", { status: 401 });
+    if (!hasCredentials("google", creds)) throw new ProviderError(missingKeyMessage("google", modelId), { status: 401, provider });
     const parts = [{ text: prompt }];
     for (const ref of referenceImages) parts.push({ inline_data: { mime_type: ref.blob.type || "image/png", data: await blobToB64(ref.blob) } });
     const body = { contents: [{ parts }], generationConfig: { responseModalities: ["IMAGE", "TEXT"], ...(aspectRatio ? { imageConfig: { aspectRatio: nearestGoogleRatio(aspectRatio) } } : {}) } };

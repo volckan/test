@@ -3,7 +3,7 @@ import { h, button, icon, badge, toast, textInput, field, select, switchRow, seg
 import { renderAppLayout, mount, pageHead } from "../app-layout.js";
 import { navigate, href } from "../../router.js";
 import { getCredentials, setCredentials, getGlobalConfig, patchGlobalConfig, getUiPrefs, setUiPrefs, listBooks } from "../../storage.js";
-import { PROVIDERS, checkProvider, listModels, hasCredentials, parseModelId, qualifyModelId, fetchElevenLabsVoices, fetchAzureVoices } from "../../llm/providers.js";
+import { PROVIDERS, checkProvider, listModels, hasCredentials, parseModelId, qualifyModelId, fetchElevenLabsVoices, fetchAzureVoices, configuredProviders } from "../../llm/providers.js";
 import { DEFAULT_PROMPTS, PROMPT_DESCRIPTIONS, listPromptNames, setGlobalPrompt } from "../../llm/prompts.js";
 import { DEFAULT_TEMPLATES, TEMPLATE_LABELS, setGlobalTemplate } from "../../pipeline/render-template.js";
 import { getSetting, setSetting, estimateUsage, deleteSetting } from "../../db.js";
@@ -52,6 +52,24 @@ async function renderNotifications() {
     h("div", {}, button("Tester une notification", { variant: "secondary", iconName: "bell", onClick: () => toast("Ceci est une notification de test", { kind: "success", title: "ADT Studio" }) }))));
 }
 
+/**
+ * Après l'enregistrement d'une clé : si le modèle par défaut pointe vers un fournisseur sans clé,
+ * on bascule sur le modèle par défaut du fournisseur qui vient d'être configuré.
+ */
+async function alignDefaultModel(p, creds) {
+  if (!hasCredentials(p.id, creds)) { toast(`${p.displayName} : clé effacée`, { kind: "info" }); return; }
+  const cfg = await getGlobalConfig();
+  const patch = {};
+  const current = cfg.default_model ?? DEFAULT_CONFIG.default_model;
+  if (p.modalities.includes("structured-text") && !hasCredentials(parseModelId(current).provider, creds)) patch.default_model = qualifyModelId(p.id, p.defaultModels?.["structured-text"] ?? p.models?.[0] ?? "");
+  const img = cfg.default_image_generation_model ?? DEFAULT_CONFIG.default_image_generation_model;
+  if (p.modalities.includes("image") && !hasCredentials(parseModelId(img).provider, creds)) patch.default_image_generation_model = qualifyModelId(p.id, p.defaultModels?.image ?? "");
+  if (Object.keys(patch).length) {
+    await patchGlobalConfig(patch);
+    toast(`${p.displayName} enregistré. Modèle par défaut réglé sur ${Object.values(patch).join(", ")} (modifiable dans Paramètres → Modèles).`, { kind: "success", duration: 9000 });
+  } else toast(`${p.displayName} enregistré`, { kind: "success" });
+}
+
 async function renderProviders() {
   const creds = await getCredentials();
   const prefs = await getUiPrefs();
@@ -66,7 +84,7 @@ async function renderProviders() {
       wrap.appendChild(h("div", { class: "card" }, h("div", { class: "card-body stack" },
         h("div", { class: "row between row-wrap" }, h("div", { class: "row" }, h("strong", {}, p.displayName), p.modalities.map((m) => badge({ "structured-text": "Texte + vision", image: "Images", tts: "Parole", stt: "Transcription" }[m] ?? m))), h("div", { class: "row" }, p.docsUrl ? h("a", { class: "small", href: p.docsUrl, target: "_blank", rel: "noopener" }, "Documentation ", icon("external", "icon-sm")) : null)),
         h("p", { class: "muted small" }, p.help), h("div", { class: p.fields.length > 1 ? "grid grid-2" : "" }, inputs),
-        h("div", { class: "row row-wrap" }, button("Enregistrer", { size: "sm", onClick: async () => { await setCredentials(creds); toast(`${p.displayName} enregistré`, { kind: "success" }); status.textContent = "Clé enregistrée"; } }), button("Tester la connexion", { size: "sm", variant: "secondary", onClick: async () => { await setCredentials(creds); status.textContent = "Vérification…"; const r = await checkProvider(p.id, creds); status.textContent = r.message; status.style.color = r.status === "connected" ? "var(--success)" : r.status === "rejected" ? "var(--danger)" : ""; } }), button("Retirer", { size: "sm", variant: "ghost", onClick: async () => { creds[p.id] = {}; await setCredentials(creds); renderSettings({ params: { section: "providers" } }); } }), h("span", { class: "grow" }), status))));
+        h("div", { class: "row row-wrap" }, button("Enregistrer", { size: "sm", onClick: async () => { await setCredentials(creds); status.textContent = "Clé enregistrée"; await alignDefaultModel(p, creds); } }), button("Tester la connexion", { size: "sm", variant: "secondary", onClick: async () => { await setCredentials(creds); status.textContent = "Vérification…"; const r = await checkProvider(p.id, creds); status.textContent = r.message; status.style.color = r.status === "connected" ? "var(--success)" : r.status === "rejected" ? "var(--danger)" : ""; } }), button("Retirer", { size: "sm", variant: "ghost", onClick: async () => { creds[p.id] = {}; await setCredentials(creds); renderSettings({ params: { section: "providers" } }); } }), h("span", { class: "grow" }), status))));
     }
   }
   wrap.appendChild(card("Vérification de l'état", h("div", { class: "stack" }, h("p", { class: "muted small" }, "Les appels partent directement de votre navigateur vers chaque fournisseur. Les clés sont stockées dans IndexedDB de ce navigateur uniquement."), button("Rafraîchir tous les fournisseurs", { variant: "secondary", iconName: "refresh", onClick: async () => { for (const p of PROVIDERS) if (hasCredentials(p.id, creds)) { const r = await checkProvider(p.id, creds); toast(`${p.displayName} : ${r.message}`, { kind: r.status === "connected" ? "success" : "warning" }); } } }))));
@@ -91,8 +109,17 @@ async function renderModels() {
   const cfg = await getGlobalConfig();
   const defaults = { default_model: cfg.default_model ?? DEFAULT_CONFIG.default_model, default_image_generation_model: cfg.default_image_generation_model ?? DEFAULT_CONFIG.default_image_generation_model, default_speech_generation_model: cfg.default_speech_generation_model ?? DEFAULT_CONFIG.default_speech_generation_model };
   const warn = h("p", { class: "muted small", hidden: defaults.default_model === DEFAULT_CONFIG.default_model }, icon("alert", "icon-sm"), " Les prompts par défaut sont optimisés pour ", h("code", {}, DEFAULT_CONFIG.default_model), ". Un autre modèle peut exiger d'ajuster certains prompts.");
+  const creds = await getCredentials();
+  const keyWarn = h("p", { class: "muted small", role: "status" });
+  const refreshKeyWarn = () => {
+    const prov = parseModelId(defaults.default_model).provider;
+    if (hasCredentials(prov, creds)) { keyWarn.hidden = true; keyWarn.textContent = ""; return; }
+    const alts = configuredProviders(creds, "structured-text");
+    keyWarn.hidden = false; keyWarn.replaceChildren(icon("alert", "icon-sm"), ` Aucune clé enregistrée pour ${PROVIDERS.find((x) => x.id === prov)?.displayName ?? prov}. `, alts.length ? `À l'exécution, le fournisseur configuré ${alts[0].displayName} sera utilisé à sa place ; choisissez-le ici pour lever cet avertissement.` : "Ajoutez une clé dans Paramètres → Fournisseurs IA.");
+  };
+  refreshKeyWarn();
   return h("div", { class: "stack" },
-    card("LLM par défaut", h("div", { class: "stack" }, h("p", { class: "muted small" }, "Modèle de repli pour la génération de texte et l'analyse visuelle. Chaque étape et chaque livre peuvent le surcharger."), await modelPicker(defaults.default_model, (v) => { defaults.default_model = v; warn.hidden = v === DEFAULT_CONFIG.default_model; }), warn)),
+    card("LLM par défaut", h("div", { class: "stack" }, h("p", { class: "muted small" }, "Modèle de repli pour la génération de texte et l'analyse visuelle. Chaque étape et chaque livre peuvent le surcharger."), await modelPicker(defaults.default_model, (v) => { defaults.default_model = v; refreshKeyWarn(); warn.hidden = v === DEFAULT_CONFIG.default_model; }), keyWarn, warn)),
     card("Modèles par défaut propres à chaque tâche", h("div", { class: "stack" }, field("Génération et retouche d'images", await modelPicker(defaults.default_image_generation_model, (v) => { defaults.default_image_generation_model = v; }, { kind: "image" })), field("Synthèse vocale (modèle OpenAI par défaut)", select([["gpt-4o-mini-tts", "gpt-4o-mini-tts (consignes de style)"], ["tts-1", "tts-1"], ["tts-1-hd", "tts-1-hd"]], defaults.default_speech_generation_model, { onChange: (v) => { defaults.default_speech_generation_model = v; } })))),
     h("div", { class: "row end" }, button("Enregistrer les modifications", { iconName: "check", onClick: async () => { await patchGlobalConfig(defaults); toast("Modèles enregistrés", { kind: "success" }); } })));
 }
