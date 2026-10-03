@@ -294,13 +294,15 @@ export function openRouterModelsOf(kind) {
  * Modèle de parole OpenRouter réellement disponible : le modèle demandé s'il figure au catalogue, sinon sa
  * variante datée (ex. openai/gpt-4o-mini-tts → openai/gpt-4o-mini-tts-2025-12-15), sinon le premier modèle de parole.
  */
-export async function resolveOpenRouterSpeechModel(model, credentials) {
-  await ensureOpenRouterCatalog(credentials, "tts");
-  const speech = openRouterModelsOf("tts");
-  if (!speech.length || speech.includes(model)) return model;
-  const variant = speech.find((id) => id.startsWith(`${model}-`) || id.split("/").pop() === model.split("/").pop());
-  return variant ?? speech.find((id) => id.startsWith("openai/")) ?? speech[0];
+export async function resolveOpenRouterModel(model, kind, credentials) {
+  await ensureOpenRouterCatalog(credentials, kind);
+  const list = openRouterModelsOf(kind);
+  if (!list.length || list.includes(model)) return model;
+  const variant = list.find((id) => id.startsWith(`${model}-`) || id.split("/").pop() === model.split("/").pop());
+  const preferred = PROVIDER_BY_ID.openrouter.defaultModels[kind];
+  return variant ?? (preferred && list.includes(preferred) ? preferred : null) ?? list.find((id) => id.startsWith("openai/") || id.startsWith("google/")) ?? list[0];
 }
+export const resolveOpenRouterSpeechModel = (model, credentials) => resolveOpenRouterModel(model, "tts", credentials);
 
 export async function listModels(provider, credentials, kind = "structured-text") {
   const p = PROVIDER_BY_ID[provider]; const creds = credentials ?? {};
@@ -322,7 +324,8 @@ export async function listModels(provider, credentials, kind = "structured-text"
     }
     if (provider === "google" && hasCredentials(provider, creds)) {
       const res = await fetchJson(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(creds.google.apiKey)}`, {}, "Google", 20000);
-      return (res.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""));
+      const ids = (res.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""));
+      return kind === "image" ? ids.filter((id) => /image/i.test(id)) : kind === "tts" ? ids.filter((id) => /tts/i.test(id)) : ids.filter((id) => !/image|tts|embedding|aqa/i.test(id));
     }
   } catch (e) { console.warn("listModels", e); }
   return p.modelsByKind?.[kind] ?? (kind === "structured-text" ? p.models : [p.defaultModels?.[kind]].filter(Boolean));
@@ -528,14 +531,14 @@ export async function generateImage({ modelId, prompt, referenceImages = [], asp
     if (!hasCredentials("openrouter", creds)) throw new ProviderError(missingKeyMessage("openrouter", modelId), { status: 401, provider });
     const content = [{ type: "text", text: prompt }];
     for (const ref of referenceImages) content.push({ type: "image_url", image_url: { url: `data:${ref.blob.type || "image/png"};base64,${await blobToB64(ref.blob)}` } });
-    const body = { model: model || PROVIDER_BY_ID.openrouter.defaultModels.image, messages: [{ role: "user", content }], modalities: ["image", "text"], ...(aspectRatio ? { image_config: { aspect_ratio: nearestGoogleRatio(aspectRatio) } } : {}) };
+    const body = { model: await resolveOpenRouterModel(model || PROVIDER_BY_ID.openrouter.defaultModels.image, "image", creds), messages: [{ role: "user", content }], modalities: ["image", "text"], ...(aspectRatio ? { image_config: { aspect_ratio: nearestGoogleRatio(aspectRatio) } } : {}) };
     const res = await fetchJson(`${openAiBase("openrouter", creds)}/chat/completions`, { method: "POST", headers: authHeaders("openrouter", creds), body: JSON.stringify(body) }, "OpenRouter images", 180000, signal);
     const img = res.choices?.[0]?.message?.images?.[0];
     const url = img?.image_url?.url ?? img?.url ?? (typeof img === "string" ? img : null);
     if (!url) throw new ProviderError(`Aucune image renvoyée par OpenRouter (${body.model})`, { retryable: true });
-    if (url.startsWith("data:")) return imageFromB64(stripDataUrl(url), mimeOf(url));
+    if (url.startsWith("data:")) return { ...imageFromB64(stripDataUrl(url), mimeOf(url)), model: `openrouter:${res.model ?? body.model}` };
     const blob = await fetchBlob(url, {}, "OpenRouter images", signal);
-    return { blob, mime: blob.type || "image/png" };
+    return { blob, mime: blob.type || "image/png", model: `openrouter:${res.model ?? body.model}` };
   }
   throw new ProviderError(`La génération d'images n'est pas prise en charge pour ${provider}`);
 }

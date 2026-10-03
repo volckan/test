@@ -98,11 +98,28 @@ export async function modelPicker(value, onChange, { kind = "structured-text", a
   let prov = providers.some((p) => p.id === curP) ? curP : providers[0].id;
   const modelSel = h("select", { class: "input select", "aria-label": "Modèle" });
   const custom = textInput({ placeholder: "ou saisir un identifiant de modèle…", value: "", style: "max-width:260px", onChange: (e) => { if (e.target.value.trim()) onChange(qualifyModelId(prov, e.target.value.trim())); } });
-  const fill = async () => { modelSel.innerHTML = ""; modelSel.appendChild(h("option", {}, "Chargement…")); const models = await listModels(prov, creds, kind); const p = PROVIDERS.find((x) => x.id === prov); const list = [...new Set([...(kind === "structured-text" ? (p?.models ?? []) : (p?.modelsByKind?.[kind] ?? [p?.defaultModels?.[kind]].filter(Boolean))), ...models])]; if (prov === curP && curM && !list.includes(curM)) list.unshift(curM); modelSel.innerHTML = ""; for (const m of list) modelSel.appendChild(h("option", { value: m, selected: prov === curP && m === curM }, m)); if (!list.length) modelSel.appendChild(h("option", { value: "" }, "— saisir ci-contre —")); if (!(prov === curP && list.includes(curM)) && list.length) onChange(qualifyModelId(prov, list[0])); };
+  const status = h("span", { class: "field-hint", role: "status" });
+  const KIND_LABEL = { "structured-text": "de texte", image: "d'images", tts: "de parole", stt: "de transcription" };
+  const fill = async () => {
+    modelSel.innerHTML = ""; modelSel.appendChild(h("option", {}, "Chargement…")); modelSel.disabled = true;
+    const p = PROVIDERS.find((x) => x.id === prov); const withKey = hasCredentials(prov, creds);
+    const live = withKey ? await listModels(prov, creds, kind) : [];
+    const embedded = kind === "structured-text" ? (p?.models ?? []) : (p?.modelsByKind?.[kind] ?? [p?.defaultModels?.[kind]].filter(Boolean));
+    const list = [...new Set([...live, ...(live.length ? [] : embedded)])];
+    const configured = prov === curP ? curM : "";
+    if (configured && !list.includes(configured)) list.unshift(configured);
+    modelSel.innerHTML = ""; for (const m of list) modelSel.appendChild(h("option", { value: m, selected: prov === curP && m === curM }, m));
+    if (!list.length) modelSel.appendChild(h("option", { value: "" }, "— saisir ci-contre —"));
+    modelSel.disabled = false;
+    status.textContent = withKey ? (live.length ? `${live.length} modèle${live.length > 1 ? "s" : ""} ${KIND_LABEL[kind] ?? ""} chez ${p?.displayName ?? prov} (liste lue depuis l'API).` : `Liste indisponible chez ${p?.displayName ?? prov} : modèles embarqués.`) : `Aucune clé pour ${p?.displayName ?? prov} : liste embarquée. Ajoutez la clé dans Paramètres → Fournisseurs IA.`;
+    if (configured && live.length && !live.includes(configured)) status.textContent += ` Le modèle configuré « ${configured} » n'apparaît pas dans la liste du fournisseur.`;
+    if (!(prov === curP && list.includes(curM)) && list.length) onChange(qualifyModelId(prov, list[0]));
+  };
   const provSel = select(providers.map((p) => [p.id, `${p.displayName}${hasCredentials(p.id, creds) ? "" : " (sans clé)"}`]), prov, { onChange: async (v) => { prov = v; await fill(); }, attrs: { style: "max-width:220px", "aria-label": "Fournisseur" } });
   modelSel.addEventListener("change", () => onChange(qualifyModelId(prov, modelSel.value)));
+  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: fill });
   await fill();
-  return h("div", { class: "row row-wrap", ...attrs }, provSel, h("div", { class: "grow", style: { minWidth: "200px" } }, modelSel), custom);
+  return h("div", { class: "stack", style: { gap: "4px" }, ...attrs }, h("div", { class: "row row-wrap" }, provSel, h("div", { class: "grow", style: { minWidth: "200px" } }, modelSel), refresh, custom), status);
 }
 
 async function renderModels() {

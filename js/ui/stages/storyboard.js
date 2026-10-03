@@ -13,6 +13,7 @@ import { getCredentials } from "../../storage.js";
 import { imageDimensions, nowIso, pad3 } from "../../util.js";
 import { renderPrompt } from "../../llm/prompt-engine.js";
 import { getPromptSource } from "../../llm/prompts.js";
+import { modelPicker } from "../screens/settings.js";
 
 export async function renderStoryboard(ctx, container) {
   if (ctx.pageId) return renderPage(ctx, container);
@@ -140,19 +141,25 @@ async function aiImage(ctx, page, sec, r, rendering) {
   const target = select([["", "Nouvelle image (ajoutée à la fin de la section)"], ...imgs.map((i) => [i, `Remplacer ${i}`])], "", {});
   const types = ["Automatique", "Photographie", "Illustration", "Schéma", "Graphique", "Carte", "Infographie", "Dessin animé", "Aquarelle", "Croquis au crayon", "Pixel art", "Vectoriel plat", "Collage papier", "Album classique"];
   const typeSel = select(types, "Automatique", {}); const prompt = textarea({ rows: 3, placeholder: "Décrivez l'image souhaitée" });
-  dialog({ title: "Image par IA", body: h("div", { class: "stack" }, field("Cible", target), field("Type d'image", typeSel), field("Description", prompt)), actions: [{ label: "Annuler", variant: "ghost" }, { label: "Générer", onClick: async () => {
+  const credentials0 = await getCredentials();
+  let modelId = resolveUsableModel(ctx.config.default_image_generation_model ?? "openai:gpt-image-2", credentials0, "image").modelId;
+  let remember = false;
+  const picker = await modelPicker(modelId, (v) => { modelId = v; }, { kind: "image" });
+  dialog({ title: "Image par IA", body: h("div", { class: "stack" }, field("Cible", target), field("Type d'image", typeSel), field("Description", prompt), field("Modèle d'images", picker), switchRow("Mémoriser comme modèle d'images de ce livre", remember, (v) => { remember = v; })), actions: [{ label: "Annuler", variant: "ghost" }, { label: "Générer", onClick: async () => {
     toast("Génération de l'image…");
+    let text = "";
     try {
       const credentials = await getCredentials(); const summary = (await ctx.storage.getNodeData("book-summary", "book"))?.summary ?? "";
+      if (remember && modelId !== ctx.config.default_image_generation_model) await patchBookConfig(ctx, { default_image_generation_model: modelId });
       const refBlob = target.value ? await ctx.storage.getImageBlob(target.value) : null; const refMeta = target.value ? await ctx.storage.getImage(target.value) : null;
       const tpl = await getPromptSource(target.value ? "ai_image_edit" : "ai_image_generation", { label: ctx.label });
-      const text = renderPrompt(tpl, { prompt: prompt.value, image_type: typeSel.value, book_summary: summary, aspect_ratio: refMeta ? `${refMeta.width}:${refMeta.height}` : "4:3" }).text;
-      const out = await generateImage({ modelId: resolveUsableModel(ctx.config.default_image_generation_model ?? "openai:gpt-image-2", credentials, "image").modelId, prompt: text, referenceImages: refBlob ? [{ blob: refBlob }] : [], aspectRatio: refMeta ? refMeta.width / refMeta.height : 4 / 3, credentials });
+      text = renderPrompt(tpl, { prompt: prompt.value, image_type: typeSel.value, book_summary: summary, aspect_ratio: refMeta ? `${refMeta.width}:${refMeta.height}` : "4:3" }).text;
+      const out = await generateImage({ modelId: resolveUsableModel(modelId, credentials, "image").modelId, prompt: text, referenceImages: refBlob ? [{ blob: refBlob }] : [], aspectRatio: refMeta ? refMeta.width / refMeta.height : 4 / 3, credentials });
       const dims = await imageDimensions(out.blob);
       const existing = (await ctx.storage.getPageImages(page.pageId)).length;
       const id = target.value ? `${target.value}_ai${Date.now().toString(36)}` : `${page.pageId}_im${pad3(existing + 1)}`;
       await ctx.storage.putImage({ imageId: id, pageId: page.pageId, width: dims.width, height: dims.height, source: "upload", renderMethod: "raster", bounds: refMeta?.bounds ?? null, parentImageId: target.value || undefined }, out.blob);
-      await ctx.storage.appendLlmLog({ requestId: id, step: "ai-image", itemId: r.sectionId, success: 1, errorCount: 0, data: { model: ctx.config.default_image_generation_model, promptName: target.value ? "ai_image_edit" : "ai_image_generation", messages: [{ role: "user", parts: [{ type: "text", text }] }], response: `image ${dims.width}×${dims.height}`, usage: { input: 0, output: 0 } } });
+      await ctx.storage.appendLlmLog({ requestId: id, step: "ai-image", itemId: r.sectionId, success: 1, errorCount: 0, data: { model: modelId, servedModel: out.model && out.model !== modelId ? out.model : undefined, promptName: target.value ? "ai_image_edit" : "ai_image_generation", messages: [{ role: "user", parts: [{ type: "text", text }] }], response: `image ${dims.width}×${dims.height}`, usage: { input: 0, output: 0 } } });
       let html = r.html;
       if (target.value) html = html.replace(new RegExp(`data-id="${target.value}"([^>]*)src="[^"]*"`), `data-id="${id}"$1src="images/${id}.png"`).replace(new RegExp(`src="images/${target.value}\\.png"([^>]*)data-id="${target.value}"`), `src="images/${id}.png"$1data-id="${id}"`);
       else html = html.replace(/<\/section>/, `<figure class="my-6 flex justify-center"><img data-id="${id}" src="images/${id}.png" alt="" class="max-w-full h-auto rounded-lg"></figure></section>`);
@@ -161,6 +168,9 @@ async function aiImage(ctx, page, sec, r, rendering) {
       if (sx) { let replaced = false; (function walk(nodes) { for (const n of nodes) { if (n.role === "image" && (n.imageId ?? n.nodeId) === target.value) { n.imageId = id; n.nodeId = id; replaced = true; } if (n.children) walk(n.children); } })(sx.nodes); if (!replaced) sx.nodes.push({ nodeId: id, imageId: id, isPruned: false, role: "image" }); await ctx.storage.putNodeData("page-sectioning", page.pageId, { ...s, manualEdit: true }, { manualEdit: true }); }
       await saveRendering(ctx, page, rendering, r.sectionId, { html });
       toast("Image générée", { kind: "success" });
-    } catch (e) { toast(e.message, { kind: "error" }); }
+    } catch (e) {
+      toast(e.message, { kind: "error", title: "Génération d'image" });
+      await ctx.storage.appendLlmLog({ requestId: `img-${Date.now().toString(36)}`, step: "ai-image", itemId: r.sectionId, success: 0, errorCount: 1, data: { model: modelId, promptName: target.value ? "ai_image_edit" : "ai_image_generation", messages: text ? [{ role: "user", parts: [{ type: "text", text }] }] : [], errors: [{ attempt: 1, kind: "provider", message: e.message }], usage: { input: 0, output: 0 } } }).catch(() => {});
+    }
   } }] });
 }
