@@ -63,7 +63,12 @@ modèle de transcription pour les horodatages de mots (OpenAI ou OpenRouter, lis
 Tous les sélecteurs de modèles (texte, images, parole, transcription) lisent la liste du fournisseur en
 direct, indiquent le nombre de modèles trouvés et signalent un modèle configuré absent du catalogue. Le
 modèle de génération d'images se règle globalement (Paramètres → Modèles), par livre (réglages du livre)
-et au cas par cas dans la boîte « Image par IA » du scénarimage. Si aucune clé n'existe pour le fournisseur demandé, le
+et au cas par cas dans la boîte « Image par IA » du scénarimage. Dans les réglages du livre, la carte « Modèle
+par sous-étape » indique pour chaque sous-étape si elle hérite du LLM par défaut ou a son propre modèle, et
+deux boutons appliquent le LLM par défaut à toutes les sous-étapes ou rétablissent l'héritage.
+
+La langue des signes ne fait appel à aucun modèle d'IA : les vidéos sont réalisées par des interprètes,
+téléversées puis affectées aux sections et aux termes du glossaire dans l'étape « Langue des signes ». Si aucune clé n'existe pour le fournisseur demandé, le
 premier fournisseur configuré pour la même tâche est utilisé et une notification le signale.
 
 ## Utilisation

@@ -100,10 +100,10 @@ export async function modelPicker(value, onChange, { kind = "structured-text", a
   const custom = textInput({ placeholder: "ou saisir un identifiant de modèle…", value: "", style: "max-width:260px", onChange: (e) => { if (e.target.value.trim()) onChange(qualifyModelId(prov, e.target.value.trim())); } });
   const status = h("span", { class: "field-hint", role: "status" });
   const KIND_LABEL = { "structured-text": "de texte", image: "d'images", tts: "de parole", stt: "de transcription" };
-  const fill = async () => {
+  const fill = async (force = false) => {
     modelSel.innerHTML = ""; modelSel.appendChild(h("option", {}, "Chargement…")); modelSel.disabled = true;
     const p = PROVIDERS.find((x) => x.id === prov); const withKey = hasCredentials(prov, creds);
-    const live = withKey ? await listModels(prov, creds, kind) : [];
+    const live = withKey ? await listModels(prov, creds, kind, { force: force === true }) : [];
     const embedded = kind === "structured-text" ? (p?.models ?? []) : (p?.modelsByKind?.[kind] ?? [p?.defaultModels?.[kind]].filter(Boolean));
     const list = [...new Set([...live, ...(live.length ? [] : embedded)])];
     const configured = prov === curP ? curM : "";
@@ -117,7 +117,7 @@ export async function modelPicker(value, onChange, { kind = "structured-text", a
   };
   const provSel = select(providers.map((p) => [p.id, `${p.displayName}${hasCredentials(p.id, creds) ? "" : " (sans clé)"}`]), prov, { onChange: async (v) => { prov = v; await fill(); }, attrs: { style: "max-width:220px", "aria-label": "Fournisseur" } });
   modelSel.addEventListener("change", () => onChange(qualifyModelId(prov, modelSel.value)));
-  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: fill });
+  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: () => fill(true) });
   await fill();
   return h("div", { class: "stack", style: { gap: "4px" }, ...attrs }, h("div", { class: "row row-wrap" }, provSel, h("div", { class: "grow", style: { minWidth: "200px" } }, modelSel), refresh, custom), status);
 }

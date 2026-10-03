@@ -304,8 +304,21 @@ export async function resolveOpenRouterModel(model, kind, credentials) {
 }
 export const resolveOpenRouterSpeechModel = (model, credentials) => resolveOpenRouterModel(model, "tts", credentials);
 
-export async function listModels(provider, credentials, kind = "structured-text") {
-  const p = PROVIDER_BY_ID[provider]; const creds = credentials ?? {};
+/** Cache court des listes de modèles (par fournisseur, modalité et clé) : évite un appel réseau par sélecteur affiché. */
+const MODEL_LIST_CACHE = new Map(); const MODEL_LIST_TTL = 5 * 60 * 1000;
+export function clearModelListCache() { MODEL_LIST_CACHE.clear(); }
+export async function listModels(provider, credentials, kind = "structured-text", { force = false } = {}) {
+  const creds = credentials ?? {};
+  const cacheKey = `${provider}|${kind}|${JSON.stringify(creds[provider] ?? {})}`;
+  const hit = MODEL_LIST_CACHE.get(cacheKey);
+  if (!force && hit && Date.now() - hit.at < MODEL_LIST_TTL) return hit.promise;
+  const promise = listModelsUncached(provider, creds, kind);
+  MODEL_LIST_CACHE.set(cacheKey, { at: Date.now(), promise });
+  promise.then((list) => { if (!list?.length) MODEL_LIST_CACHE.delete(cacheKey); }, () => MODEL_LIST_CACHE.delete(cacheKey));
+  return promise;
+}
+async function listModelsUncached(provider, creds, kind) {
+  const p = PROVIDER_BY_ID[provider];
   if (!p) return [];
   try {
     if (provider === "openrouter" && hasCredentials(provider, creds)) {

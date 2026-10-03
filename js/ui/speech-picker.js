@@ -13,9 +13,9 @@ export const credKeyOf = (prov) => (prov === "gemini" ? "google" : prov);
 const DEFAULT_SPEECH_MODEL = { openai: "gpt-4o-mini-tts", openrouter: "openai/gpt-4o-mini-tts", gemini: "gemini-2.5-flash-preview-tts", elevenlabs: "eleven_multilingual_v2", azure: "neural" };
 
 /** Liste des modèles de parole d'un fournisseur (en ligne si une clé existe, sinon liste embarquée). */
-export async function speechModels(prov, creds) {
+export async function speechModels(prov, creds, { force = false } = {}) {
   const key = credKeyOf(prov);
-  const live = await listModels(key, creds, "tts").catch(() => []);
+  const live = await listModels(key, creds, "tts", { force }).catch(() => []);
   const p = PROVIDERS.find((x) => x.id === key);
   const fallback = p?.modelsByKind?.tts ?? (p?.defaultModels?.tts ? [p.defaultModels.tts] : (p?.models ?? []));
   return [...new Set([...(live ?? []), ...(live?.length ? [] : fallback)])];
@@ -62,10 +62,10 @@ export async function speechProviderPicker(ctx, { onChange } = {}) {
     } else voiceHost.appendChild(textInput({ value: current, placeholder: "identifiant de voix (vide = automatique)", onChange: (e) => save({ voice: e.target.value.trim() || undefined }), "aria-label": "Voix par défaut" }));
   };
 
-  const fillModels = async () => {
+  const fillModels = async (force = false) => {
     modelSel.innerHTML = ""; modelSel.appendChild(h("option", {}, "Chargement…")); modelSel.disabled = true;
     status.textContent = hasCredentials(credKeyOf(prov), creds) ? "Liste lue depuis l'API du fournisseur…" : "Aucune clé pour ce fournisseur : liste embarquée.";
-    const models = await speechModels(prov, creds);
+    const models = await speechModels(prov, creds, { force: force === true });
     const current = sp.providers?.[prov]?.model ?? DEFAULT_SPEECH_MODEL[prov];
     const list = [...models]; if (current && !list.includes(current)) list.unshift(current);
     modelSel.innerHTML = ""; for (const m of list) modelSel.appendChild(h("option", { value: m, selected: m === current }, m)); modelSel.disabled = false;
@@ -80,7 +80,7 @@ export async function speechProviderPicker(ctx, { onChange } = {}) {
 
   const provSel = select(SPEECH_PROVIDERS.map(([id, l]) => [id, `${l}${hasCredentials(credKeyOf(id), creds) ? "" : " (sans clé)"}`]), prov, { onChange: async (v) => { prov = v; await save({ default_provider: v, voice: undefined }); await fillModels(); }, attrs: { "aria-label": "Fournisseur de parole" } });
   const custom = textInput({ placeholder: "ou saisir un identifiant de modèle…", value: "", style: "max-width:260px", onChange: async (e) => { const m = e.target.value.trim(); if (!m) return; await save({ providers: { [prov]: { model: m } }, voice: undefined }); e.target.value = ""; await fillModels(); } });
-  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: fillModels });
+  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: () => fillModels(true) });
   await fillModels();
   return h("div", { class: "stack" },
     h("div", { class: "row row-wrap" }, field("Fournisseur", provSel), field("Modèle de parole", h("div", { class: "row" }, h("div", { class: "grow", style: { minWidth: "240px" } }, modelSel), refresh, custom), { hint: "" })),
@@ -93,8 +93,8 @@ export const TRANSCRIPTION_PROVIDERS = [["openai", "OpenAI"], ["openrouter", "Op
 const DEFAULT_TRANSCRIPTION_MODEL = { openai: "whisper-1", openrouter: "openai/whisper-1" };
 
 /** Modèles de transcription d'un fournisseur (en ligne si une clé existe, sinon liste embarquée). */
-export async function transcriptionModels(prov, creds) {
-  const live = await listModels(prov, creds, "stt").catch(() => []);
+export async function transcriptionModels(prov, creds, { force = false } = {}) {
+  const live = await listModels(prov, creds, "stt", { force }).catch(() => []);
   const p = PROVIDERS.find((x) => x.id === prov);
   const fallback = p?.modelsByKind?.stt ?? (p?.defaultModels?.stt ? [p.defaultModels.stt] : []);
   return [...new Set([...(live ?? []), ...(live?.length ? [] : fallback)])];
@@ -113,12 +113,12 @@ export async function transcriptionPicker(ctx, { onChange } = {}) {
   const status = h("span", { class: "field-hint" });
   const save = async (patch) => { await patchBookConfig(ctx, { speech: patch }); sp = ctx.config.speech ?? sp; onChange?.(); };
 
-  const fillModels = async () => {
+  const fillModels = async (force = false) => {
     const eff = effective();
     modelSel.innerHTML = ""; modelSel.disabled = true;
     if (!eff) { modelSel.appendChild(h("option", { value: "" }, "— aucune clé OpenAI ni OpenRouter —")); status.textContent = "Sans clé, les horodatages sont estimés à partir de la durée de l'audio. Ajoutez une clé dans Paramètres → Fournisseurs IA."; return; }
     modelSel.appendChild(h("option", {}, "Chargement…"));
-    const models = await transcriptionModels(eff, creds);
+    const models = await transcriptionModels(eff, creds, { force: force === true });
     const current = sp.transcription_model ?? DEFAULT_TRANSCRIPTION_MODEL[eff];
     const list = [...models]; if (current && !list.includes(current)) list.unshift(current);
     modelSel.innerHTML = ""; for (const m of list) modelSel.appendChild(h("option", { value: m, selected: m === current }, m)); modelSel.disabled = false;
@@ -130,7 +130,7 @@ export async function transcriptionPicker(ctx, { onChange } = {}) {
   modelSel.addEventListener("change", () => save({ transcription_model: modelSel.value || undefined }));
   const provSel = select([["", "Automatique (OpenAI, sinon OpenRouter)"], ...TRANSCRIPTION_PROVIDERS.map(([id, l]) => [id, `${l}${hasCredentials(id, creds) ? "" : " (sans clé)"}`])], prov, { onChange: async (v) => { prov = v; await save({ transcription_provider: v || undefined, transcription_model: undefined }); await fillModels(); }, attrs: { "aria-label": "Fournisseur de transcription" } });
   const custom = textInput({ placeholder: "ou saisir un identifiant de modèle…", value: "", style: "max-width:260px", onChange: async (e) => { const m = e.target.value.trim(); if (!m) return; await save({ transcription_model: m }); e.target.value = ""; await fillModels(); } });
-  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: fillModels });
+  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: () => fillModels(true) });
   await fillModels();
   return h("div", { class: "stack" },
     h("div", { class: "row row-wrap" }, field("Horodatages des mots : fournisseur", provSel), field("Modèle de transcription", h("div", { class: "row" }, h("div", { class: "grow", style: { minWidth: "240px" } }, modelSel), refresh, custom))),
