@@ -67,4 +67,14 @@ input.adt-correct, textarea.adt-correct { border: 2px solid #16a34a !important; 
 .placed-in-dropzone, .placed-word { background-color: rgba(59,130,246,.12) !important; }
 .adt-step-prompt { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; } .adt-step-feedback { font-weight: 600; min-height: 1.5em; }
 @media print { .adt-dock, .adt-panel-host, .adt-audio-bar, .adt-activity-dock, .adt-skip { display: none !important; } }
+
+/* Quiz : plusieurs questions, texte à trous */
+.quiz-question + .quiz-question { border-top: 1px solid #e2e8f0; padding-top: 1.25rem; }
+.quiz-blank { display: inline-block; min-width: 6ch; margin: 0 .25rem; padding: .2rem .5rem; border: 2px solid #94a3b8; border-radius: .5rem; font: inherit; background: #fff; color: inherit; }
+.quiz-blank:focus { outline: 3px solid var(--adt-accent); outline-offset: 2px; }
+.quiz-blank.adt-correct, .quiz-blank.fitb-correct { border-color: #15803d; background: #f0fdf4; }
+.quiz-blank.adt-incorrect, .quiz-blank.fitb-incorrect { border-color: #b91c1c; background: #fef2f2; }
+.quiz-feedback { margin: 0; font-size: .95rem; }
+.quiz-feedback.adt-fb-correct { color: #15803d; } .quiz-feedback.adt-fb-incorrect { color: #b91c1c; }
+.quiz-question.adt-done .quiz-check { display: none; }
 `;

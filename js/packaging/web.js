@@ -3,7 +3,7 @@ import { RUNTIME_JS } from "./runtime-js.js";
 import { RUNTIME_CSS } from "./runtime-css.js";
 import { uiStringsFor } from "./ui-strings.js";
 import { compileTailwind } from "./tailwind-compile.js";
-import { escapeHtml, escapeAttr, escapeXml, nowIso, baseLanguage, tokenizeWords } from "../util.js";
+import { escapeHtml, escapeAttr, escapeXml, nowIso, baseLanguage, tokenizeWords, quizQuestions, quizQuestionPrefix, quizTitle } from "../util.js";
 import { parseHtml } from "../pipeline/validate-html.js";
 import { walkNodes } from "../pipeline/section-tree.js";
 import { getTypography, typographyCss } from "../pipeline/typography.js";
@@ -104,7 +104,7 @@ export async function buildWebPackage(storage, options = {}) {
     const texts = {};
     for (const e of catalog) texts[e.id] = mathIds.has(e.id) ? (latexToMathML(temml, e.text) ?? e.text) : e.text;
     if (!features.easyRead) for (const k of Object.keys(texts)) if (k.endsWith("_easy_read")) delete texts[k];
-    for (const e of readingOrder) if (e.quiz) { texts[`${e.quiz.quizId}`] ??= texts[`${e.quiz.quizId}_que`] ?? e.quiz.question; }
+    for (const e of readingOrder) if (e.quiz) { texts[`${e.quiz.quizId}`] ??= texts[`${quizQuestionPrefix(e.quiz, 0)}_que`] ?? quizTitle(e.quiz); }
     for (const item of readingOrder) if (!item.quiz) texts[item.section_id] ??= title;
     const i18n = `content/i18n/${lang}/`;
     files.set(`${i18n}texts.json`, JSON.stringify(texts));
@@ -250,16 +250,30 @@ ${answers ? `<script type="application/json" data-correct-answers>${JSON.stringi
 }
 
 export function quizHtmlBody(q, lang) {
-  const correct = Object.fromEntries(q.options.map((o, i) => [`${q.quizId}_o${i}`, i === q.answerIndex]));
-  const expl = Object.fromEntries(q.options.map((o, i) => [`${q.quizId}_o${i}_exp`, o.explanation]));
-  return `<div id="content" class="container mx-auto w-full max-w-3xl px-6 py-10 min-h-screen flex items-center" style="background-color:#f8fafc">
-<section id="simple-main" class="w-full rounded-2xl bg-white shadow-sm p-6 md:p-10 space-y-6" data-section-type="activity_quiz" data-section-id="${escapeAttr(q.quizId)}" data-id="${escapeAttr(q.quizId)}" data-area-id="${escapeAttr(q.quizId)}" data-correct-answers='${escapeAttr(JSON.stringify(correct))}' data-option-explanations='${escapeAttr(JSON.stringify(expl))}'>
-<h2 class="adt-h2 font-bold" data-id="${escapeAttr(q.quizId)}_que">${escapeHtml(q.question)}</h2>
+  const qs = quizQuestions(q); const correct = {}; const expl = {};
+  const blocks = qs.map((qu, k) => {
+    const p = quizQuestionPrefix(q, k, qs.length); const type = qu.type ?? "multiple_choice";
+    if (type === "fill_in_the_blank") {
+      correct[`${p}_ans`] = (qu.answers ?? []).join("|"); expl[`${p}_ans_exp`] = qu.explanation ?? "";
+      return `<div class="quiz-question space-y-3" data-quiz-question data-qtype="fill_in_the_blank" data-prefix="${escapeAttr(p)}">
+<h2 class="adt-h2 font-bold">${qs.length > 1 ? `<span class="quiz-num">${k + 1}. </span>` : ""}<span class="sr-only" aria-hidden="true" data-id="${escapeAttr(p)}_que">${escapeHtml(qu.question)}</span><span class="quiz-fitb-render adt-body font-normal"></span></h2>
+<div class="quiz-fitb-controls flex items-center gap-3"><button type="button" class="adt-btn quiz-check">Vérifier</button></div>
+<p class="quiz-feedback feedback-text" role="status" hidden></p>
+</div>`;
+    }
+    (qu.options ?? []).forEach((o, i) => { correct[`${p}_o${i}`] = i === qu.answerIndex; expl[`${p}_o${i}_exp`] = o.explanation; });
+    return `<div class="quiz-question space-y-3" data-quiz-question data-qtype="${escapeAttr(type)}" data-prefix="${escapeAttr(p)}">
+<h2 class="adt-h2 font-bold">${qs.length > 1 ? `<span class="quiz-num">${k + 1}. </span>` : ""}<span data-id="${escapeAttr(p)}_que">${escapeHtml(qu.question)}</span></h2>
 <div class="space-y-3" role="group" aria-label="Options">
-${q.options.map((o, i) => `<label class="activity-option flex items-start gap-4 p-4 rounded-xl border-2 border-slate-200 hover:bg-slate-50 cursor-pointer min-h-11" data-activity-item="${q.quizId}_o${i}" data-explanation-id="${q.quizId}_o${i}_exp"><input type="radio" name="quiz" value="${i}" class="sr-only"><span class="option-letter w-8 h-8 flex-none rounded-full border-2 border-slate-300 flex items-center justify-center text-slate-600 font-bold" aria-hidden="true">${i + 1}</span><span class="flex-1"><span class="option-text adt-body" data-id="${q.quizId}_o${i}">${escapeHtml(o.text)}</span><span class="feedback-container hidden mt-2 flex items-center gap-2"><span class="feedback-icon w-5 h-5 rounded-full flex items-center justify-center text-sm font-bold"></span><span class="feedback-text text-sm font-medium" data-id="${q.quizId}_o${i}_exp">${escapeHtml(o.explanation)}</span></span></span><span class="validation-mark" aria-hidden="true"></span></label>`).join("\n")}
+${(qu.options ?? []).map((o, i) => `<label class="activity-option flex items-start gap-4 p-4 rounded-xl border-2 border-slate-200 hover:bg-slate-50 cursor-pointer min-h-11" data-activity-item="${p}_o${i}" data-explanation-id="${p}_o${i}_exp"><input type="radio" name="quiz-${escapeAttr(p)}" value="${i}" class="sr-only"><span class="option-letter w-8 h-8 flex-none rounded-full border-2 border-slate-300 flex items-center justify-center text-slate-600 font-bold" aria-hidden="true">${i + 1}</span><span class="flex-1"><span class="option-text adt-body" data-id="${p}_o${i}">${escapeHtml(o.text)}</span><span class="feedback-container hidden mt-2 text-sm"><span class="feedback-icon mr-1"></span><span class="feedback-text"></span></span></span><span class="validation-mark w-6 text-center" aria-hidden="true"></span></label>`).join("\n")}
 </div>
+</div>`;
+  });
+  return `<div id="content" class="container mx-auto w-full max-w-3xl px-6 py-10 min-h-screen flex items-center" style="background-color:#f8fafc">
+<section id="simple-main" class="w-full rounded-2xl bg-white shadow-sm p-6 md:p-10 space-y-8" data-section-type="activity_quiz" data-section-id="${escapeAttr(q.quizId)}" data-id="${escapeAttr(q.quizId)}" data-area-id="${escapeAttr(q.quizId)}" data-correct-answers='${escapeAttr(JSON.stringify(correct))}' data-option-explanations='${escapeAttr(JSON.stringify(expl))}'>
+${blocks.join("\n")}
 <div data-submit-target></div>
-<script type="application/json" id="quiz-correct-answers">${JSON.stringify(correct)}</script>
+<script type="application/json" id="quiz-correct-answers">${JSON.stringify(correct).replace(/</g, "\\u003c")}</script>
 <script type="application/json" id="quiz-explanations">${JSON.stringify(expl).replace(/</g, "\\u003c")}</script>
 </section></div>`;
 }

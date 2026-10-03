@@ -1,6 +1,7 @@
 // Enrichissements : quiz, légendes d'images, glossaire, table des matières, catalogue de texte, lecture facile.
 import { callLLM } from "../../llm/client.js";
-import { nowIso, pad3, quizIdOf, processWithConcurrency } from "../../util.js";
+import { nowIso, pad3, quizIdOf, processWithConcurrency, quizQuestions, quizQuestionPrefix, quizTitle, normalizeBlank, QUIZ_QUESTION_TYPES } from "../../util.js";
+import { QUIZ_QUESTION_TYPE_LABELS } from "../../config.js";
 import { pageImageForLlm, imageBlobForLlm, languageContext, stepModel, stepTimeout, stepRetries, SCHEMAS, bookLanguage, isSectionPruned } from "./common.js";
 import { parseHtml } from "../validate-html.js";
 import { walkNodes, sectionHeading, headingLevelOf, sectionText } from "../section-tree.js";
@@ -41,10 +42,28 @@ function shuffleOptions(options, answerIndex) {
 export async function generateOneQuiz({ storage, config, pageTexts, signal, itemId }) {
   const lang = languageContext(await bookLanguage(storage, config));
   const qc = config.quiz_generation ?? {};
-  const res = await callLLM({ storage, step: "quiz-generation", itemId, promptName: qc.prompt ?? "quiz_generation", variables: { page_texts: pageTexts, language: lang.name, language_code: lang.code }, schema: SCHEMAS.quiz, config, modelId: stepModel(config, "quiz_generation"), timeoutMs: stepTimeout(config, "quiz_generation"), maxRetries: stepRetries(config, "quiz_generation"), signal,
-    validate: (out) => { const e = []; if (out.options?.length !== 3) e.push("exactement 3 options attendues"); if (!(out.answer_index >= 0 && out.answer_index < 3)) e.push("answer_index doit valoir 0, 1 ou 2"); if (!out.question?.trim()) e.push("question vide"); return e; } });
-  const sh = shuffleOptions(res.parsed.options, res.parsed.answer_index);
-  return { question: res.parsed.question, options: sh.options, answerIndex: sh.answerIndex, reasoning: res.parsed.reasoning };
+  const n = Math.max(1, Math.min(10, Number(qc.questions_per_quiz) || 1));
+  const types = (qc.question_types ?? ["multiple_choice"]).filter((t) => QUIZ_QUESTION_TYPES.includes(t));
+  const allowed = types.length ? types : ["multiple_choice"];
+  const typeLabels = allowed.map((t) => `${t} (${QUIZ_QUESTION_TYPE_LABELS[t]})`);
+  const validateQuestion = (q, i) => {
+    const e = []; const tag = `question ${i + 1}`;
+    if (!allowed.includes(q.type)) e.push(`${tag} : type « ${q.type} » non autorisé (attendu : ${allowed.join(", ")})`);
+    if (!q.question?.trim()) e.push(`${tag} : énoncé vide`);
+    if (q.type === "multiple_choice") { if (q.options?.length !== 3) e.push(`${tag} : exactement 3 options attendues`); if (!(q.answer_index >= 0 && q.answer_index < 3)) e.push(`${tag} : answer_index doit valoir 0, 1 ou 2`); }
+    else if (q.type === "true_false") { if (q.options?.length !== 2) e.push(`${tag} : exactement 2 options (Vrai, Faux) attendues`); if (!(q.answer_index >= 0 && q.answer_index < 2)) e.push(`${tag} : answer_index doit valoir 0 ou 1`); }
+    else if (q.type === "fill_in_the_blank") { if (!(q.accepted_answers ?? []).some((a) => String(a).trim())) e.push(`${tag} : accepted_answers doit contenir au moins une réponse`); if (!/_{3,}|\[\[blank/.test(q.question ?? "")) e.push(`${tag} : la phrase doit contenir un trou « ___ »`); }
+    return e;
+  };
+  const res = await callLLM({ storage, step: "quiz-generation", itemId, promptName: qc.prompt ?? "quiz_generation", variables: { page_texts: pageTexts, language: lang.name, language_code: lang.code, questions_per_quiz: n, question_types: typeLabels, question_type_codes: allowed }, schema: SCHEMAS.quiz, config, modelId: stepModel(config, "quiz_generation"), timeoutMs: stepTimeout(config, "quiz_generation"), maxRetries: stepRetries(config, "quiz_generation"), signal,
+    validate: (out) => { const e = []; const qs = out.questions ?? []; if (qs.length !== n) e.push(`exactement ${n} question(s) attendue(s), ${qs.length} reçue(s)`); qs.forEach((q, i) => e.push(...validateQuestion(q, i))); return e; } });
+  const questions = (res.parsed.questions ?? []).map((q) => {
+    if (q.type === "fill_in_the_blank") return { type: q.type, question: normalizeBlank(q.question), options: [], answerIndex: 0, answers: [...new Set((q.accepted_answers ?? []).map((a) => String(a).trim()).filter(Boolean))], explanation: q.explanation ?? "" };
+    if (q.type === "true_false") return { type: q.type, question: q.question, options: q.options.map((o, i) => ({ text: `${i + 1}) ${String(o.text).replace(/^\s*\d+\)\s*/, "").trim()}`, explanation: o.explanation })), answerIndex: q.answer_index };
+    const sh = shuffleOptions(q.options, q.answer_index);
+    return { type: "multiple_choice", question: q.question, options: sh.options, answerIndex: sh.answerIndex };
+  });
+  return { questions, reasoning: res.parsed.reasoning };
 }
 
 export async function quizGeneration(ctx) {
@@ -69,7 +88,7 @@ export async function quizGeneration(ctx) {
     done++; ctx.progress(done, groups.length);
   }, { signal: ctx.signal });
   const list = quizzes.filter(Boolean);
-  for (const m of manual) if (!list.some((q) => q.afterPageId === m.afterPageId && q.question === m.question)) list.push(m);
+  for (const m of manual) if (!list.some((q) => q.afterPageId === m.afterPageId && quizTitle(q) === quizTitle(m))) list.push(m);
   list.sort((a, b) => a.afterPageId.localeCompare(b.afterPageId));
   const used = new Set(manual.map((m) => m.quizId).filter(Boolean));
   list.forEach((q, i) => { if (!q.quizId) { let seq = i + 1; while (used.has(quizIdOf(seq))) seq++; q.quizId = quizIdOf(seq); used.add(q.quizId); } q.quizIndex = i; });
@@ -236,7 +255,16 @@ export async function textCatalog(ctx) {
     }
   }
   for (const g of ((await storage.getNodeData("glossary", "book"))?.items ?? []).filter((g) => !g.pruned)) { push({ id: g.id, text: g.word }); push({ id: `${g.id}_def`, text: g.definition }); }
-  for (const q of (await storage.getNodeData("quiz-generation", "book"))?.quizzes ?? []) { push({ id: `${q.quizId}_que`, text: q.question }); q.options.forEach((o, i) => { push({ id: `${q.quizId}_o${i}`, text: o.text }); push({ id: `${q.quizId}_o${i}_exp`, text: o.explanation }); }); }
+  for (const q of (await storage.getNodeData("quiz-generation", "book"))?.quizzes ?? []) {
+    if (q.deleted) continue;
+    const qs = quizQuestions(q);
+    qs.forEach((qu, k) => {
+      const p = quizQuestionPrefix(q, k, qs.length);
+      push({ id: `${p}_que`, text: qu.question });
+      if (qu.type === "fill_in_the_blank") { push({ id: `${p}_ans`, text: (qu.answers ?? []).join(" | ") }); if (qu.explanation) push({ id: `${p}_ans_exp`, text: qu.explanation }); }
+      else (qu.options ?? []).forEach((o, i) => { push({ id: `${p}_o${i}`, text: o.text }); push({ id: `${p}_o${i}_exp`, text: o.explanation }); });
+    });
+  }
   for (const e of ((await storage.getNodeData("toc-generation", "book"))?.entries ?? [])) if (e.title) push({ id: `${e.id}_title`, text: e.title });
   await storage.putNodeData("text-catalog", "book", { entries, generatedAt: nowIso() });
   return { message: `${entries.length} entrées de texte` };

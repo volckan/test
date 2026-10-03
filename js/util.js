@@ -159,3 +159,16 @@ export function pickFile({ accept = "", multiple = false } = {}) {
     document.body.appendChild(input); input.click();
   });
 }
+
+// ── Quiz : plusieurs questions par quiz, de types variés ─────────────────────
+export const QUIZ_QUESTION_TYPES = ["multiple_choice", "true_false", "fill_in_the_blank"];
+/** Questions d'un quiz (les quiz anciens, à question unique, sont normalisés). */
+export function quizQuestions(q) {
+  if (Array.isArray(q?.questions) && q.questions.length) return q.questions;
+  return [{ type: "multiple_choice", question: q?.question ?? "", options: q?.options ?? [], answerIndex: q?.answerIndex ?? 0 }];
+}
+/** Préfixe des identifiants de texte d'une question : quizId pour un quiz à question unique (compatibilité), sinon quizId_qN. */
+export function quizQuestionPrefix(q, k, total) { return (total ?? quizQuestions(q).length) === 1 ? q.quizId : `${q.quizId}_q${k + 1}`; }
+export function quizTitle(q) { return quizQuestions(q)[0]?.question ?? ""; }
+/** Normalise les marqueurs de trou d'une question à compléter en « ___ ». */
+export function normalizeBlank(text) { const t = String(text ?? "").replace(/\[\[blank[^\]]*\]\]|_{3,}|…{2,}|\.{4,}/g, "___"); return t.includes("___") ? t : `${t} ___`; }

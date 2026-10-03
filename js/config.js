@@ -149,7 +149,7 @@ export const DEFAULT_CONFIG = {
   storyboard_effort: "medium",
   storyboard_activity_mode: "dynamic",
   reflowable_font: "auto",
-  quiz_generation: { prompt: "quiz_generation", match_book_style: true, pages_per_quiz: 1, quiz_section_types: ["boxed_text", "text_only", "text_and_single_image", "text_and_images", "images_only"] },
+  quiz_generation: { prompt: "quiz_generation", match_book_style: true, pages_per_quiz: 1, questions_per_quiz: 1, question_types: ["multiple_choice"], quiz_section_types: ["boxed_text", "text_only", "text_and_single_image", "text_and_images", "images_only"] },
   glossary: { prompt: "glossary" },
   glossary_amount: "standard",
   glossary_user_prompt: "",
@@ -350,4 +350,5 @@ export function buildConfigOverrides(v) {
 
 export const GLOSSARY_AMOUNTS = { concise: "Concis (5–10 termes)", standard: "Standard", comprehensive: "Exhaustif" };
 export const CAPTION_GRADE_LEVELS = { early: "Jeunes lecteurs (maternelle–CM2)", middle: "Collège et lycée", advanced: "Supérieur et adultes" };
+export const QUIZ_QUESTION_TYPE_LABELS = { multiple_choice: "Choix multiple", true_false: "Vrai / faux", fill_in_the_blank: "Texte à trous" };
 export const TEXT_CATALOG_CATEGORIES = { text: "Texte", captions: "Légendes", answers: "Réponses", glossary: "Glossaire", "easy-read": "Lecture facile" };

@@ -40,7 +40,7 @@ export const RUNTIME_JS = String.raw`
   };
 
   var state = { config: null, pages: [], toc: [], texts: {}, speechTexts: {}, audios: {}, timecodes: {}, glossary: {}, videos: {}, images: {}, ui: {}, lang: null, pageId: null, pageIndex: -1, openPanel: null, player: null, activities: [] };
-  var UI_FR = { toc: "Table des matières", glossary: "Glossaire", listen: "Écouter", stopListening: "Arrêter la lecture", sign: "Langue des signes", language: "Langue", settings: "Paramètres", prev: "Page précédente", next: "Page suivante", pageOf: "Page {n} sur {m}", submit: "Valider", nextActivity: "Suivant", reset: "Réinitialiser", allCorrect: "Tout est correct !", review: "{c} correctes · {w} à revoir · {e} vides", easyRead: "Lecture facile", readAloud: "Lecture à voix haute", autoplay: "Lecture automatique", describeImages: "Décrire les images", highlight: "Surlignage", word: "Mot", sentence: "Phrase", theme: "Thème", light: "Clair", dark: "Sombre", system: "Système", iconSize: "Taille des icônes", reduceMotion: "Réduire les animations", dockLayout: "Barre d'outils", compact: "Compacte", full: "Pleine largeur", top: "Haut", bottom: "Bas", center: "Centrée", spread: "Étalée", autoHide: "Masquer automatiquement les menus", shortcuts: "Raccourcis clavier", speed: "Vitesse", volume: "Volume", slow: "Lent", normal: "Normal", fast: "Rapide", veryFast: "Très rapide", onThisPage: "Sur cette page", bookGlossary: "Tout le glossaire", search: "Rechercher", highlightTerms: "Surligner les mots du glossaire", viewInGlossary: "Voir dans le glossaire", variations: "Variantes", notepad: "Bloc-notes", notes: "Mes notes", eli5: "Explique-moi simplement", correct: "Bonne réponse", incorrect: "Essaie encore", checkSpelling: "Vérifie l'orthographe", inappropriate: "Langage inapproprié", remaining: "{n} restants", positionOf: "Position {n} sur {m}", moveUp: "Monter", moveDown: "Descendre", skip: "Aller au contenu", narrator: "Voix du narrateur", tutorial: "Visite guidée", tutorialText: "Utilisez les flèches pour changer de page, le haut-parleur pour écouter, le livre pour le glossaire et l'engrenage pour les paramètres d'accessibilité.", ok: "Compris", trueLabel: "Vrai", falseLabel: "Faux" };
+  var UI_FR = { toc: "Table des matières", glossary: "Glossaire", listen: "Écouter", stopListening: "Arrêter la lecture", sign: "Langue des signes", language: "Langue", settings: "Paramètres", prev: "Page précédente", next: "Page suivante", pageOf: "Page {n} sur {m}", submit: "Valider", nextActivity: "Suivant", reset: "Réinitialiser", allCorrect: "Tout est correct !", review: "{c} correctes · {w} à revoir · {e} vides", easyRead: "Lecture facile", readAloud: "Lecture à voix haute", autoplay: "Lecture automatique", describeImages: "Décrire les images", highlight: "Surlignage", word: "Mot", sentence: "Phrase", theme: "Thème", light: "Clair", dark: "Sombre", system: "Système", iconSize: "Taille des icônes", reduceMotion: "Réduire les animations", dockLayout: "Barre d'outils", compact: "Compacte", full: "Pleine largeur", top: "Haut", bottom: "Bas", center: "Centrée", spread: "Étalée", autoHide: "Masquer automatiquement les menus", shortcuts: "Raccourcis clavier", speed: "Vitesse", volume: "Volume", slow: "Lent", normal: "Normal", fast: "Rapide", veryFast: "Très rapide", onThisPage: "Sur cette page", bookGlossary: "Tout le glossaire", search: "Rechercher", highlightTerms: "Surligner les mots du glossaire", viewInGlossary: "Voir dans le glossaire", variations: "Variantes", notepad: "Bloc-notes", notes: "Mes notes", eli5: "Explique-moi simplement", correct: "Bonne réponse", incorrect: "Essaie encore", check: "Vérifier", answer: "Réponse", checkSpelling: "Vérifie l'orthographe", inappropriate: "Langage inapproprié", remaining: "{n} restants", positionOf: "Position {n} sur {m}", moveUp: "Monter", moveDown: "Descendre", skip: "Aller au contenu", narrator: "Voix du narrateur", tutorial: "Visite guidée", tutorialText: "Utilisez les flèches pour changer de page, le haut-parleur pour écouter, le livre pour le glossaire et l'engrenage pour les paramètres d'accessibilité.", ok: "Compris", trueLabel: "Vrai", falseLabel: "Faux" };
   function t(k, vars) { var s = (state.ui && state.ui[k]) || UI_FR[k] || k; if (vars) Object.keys(vars).forEach(function (v) { s = s.replace("{" + v + "}", vars[v]); }); return s; }
   function prefersDark() { return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches; }
   function setting(k, def) { var cfg = state.config || {}; var locked = (cfg.lockedSettings || []).indexOf(k) >= 0; var d = cfg.defaultSettings || {}; var fromCfg = k === "dockLayout" ? d.dockLayout : d[k]; if (locked && fromCfg !== undefined) return fromCfg; var s = store(k); return s === undefined || s === null ? (fromCfg !== undefined ? fromCfg : def) : s; }
@@ -92,6 +92,7 @@ export const RUNTIME_JS = String.raw`
       if (tr.easy) { elm.textContent = tr.text; elm.style.whiteSpace = "pre-line"; elm.setAttribute("data-easy-read", "true"); } else { elm.style.whiteSpace = ""; elm.removeAttribute("data-easy-read"); if (elm.getAttribute("data-math") === "true") elm.innerHTML = tr.text; else elm.textContent = tr.text; }
     });
     var titleId = state.pageId; if (titleId && state.texts[titleId]) document.title = state.texts[titleId];
+    content.querySelectorAll("[data-quiz-question][data-qtype='fill_in_the_blank']").forEach(function (b) { if (b.__adtRebuild && !b.classList.contains("adt-done")) b.__adtRebuild(); });
     content.querySelectorAll("[data-placeholder-id]").forEach(function (elm) { var tr = textFor(elm.getAttribute("data-placeholder-id")); if (tr) elm.placeholder = tr.text; });
   }
 
@@ -597,25 +598,54 @@ export const RUNTIME_JS = String.raw`
     function set(tg, v) { tg.value = v; tg.dispatchEvent(new Event("input", { bubbles: true })); tg.dispatchEvent(new Event("change", { bubbles: true })); tg.classList.add("bg-emerald-50", "border-emerald-600"); play("drop"); var st = section.querySelector("[data-word-bank-status]"); if (st) st.textContent = v + " placé"; announce(v + " placé"); if (sel) sel.classList.remove("adt-selected"); sel = null; }
     targets.forEach(function (tg) { on(tg, "dragover", function (e) { e.preventDefault(); }); on(tg, "drop", function (e) { e.preventDefault(); set(tg, e.dataTransfer.getData("text/plain")); }); on(tg, "focus", function () { if (sel) set(tg, sel.getAttribute("data-word-bank-chip")); }); on(tg, "keydown", function (e) { if (e.key === "Enter" && sel) { e.preventDefault(); set(tg, sel.getAttribute("data-word-bank-chip")); } }); });
   }
-  // Quiz
+  // Quiz : une ou plusieurs questions (choix multiple, vrai/faux, texte à trous)
   function initQuiz(section) {
     var ansEl = document.getElementById("quiz-correct-answers"), expEl = document.getElementById("quiz-explanations");
     var ans = ansEl ? JSON.parse(ansEl.textContent) : (section.getAttribute("data-correct-answers") ? JSON.parse(section.getAttribute("data-correct-answers")) : answers());
     var exps = expEl ? JSON.parse(expEl.textContent) : {};
-    var options = section.querySelectorAll(".activity-option"); var done = false;
-    options.forEach(function (lab) {
-      lab.classList.remove("adt-correct", "adt-incorrect", "selected-option"); var fc = lab.querySelector(".feedback-container"); if (fc) fc.classList.add("hidden");
-      var inp = lab.querySelector("input"); if (inp) inp.checked = false;
-      function choose() {
-        if (done) return; var id = lab.getAttribute("data-activity-item"); var ok = ans[id] === true; if (inp) inp.checked = true;
-        lab.classList.add("selected-option"); lab.classList.add(ok ? "adt-correct" : "adt-incorrect");
-        var f = lab.querySelector(".feedback-container"); if (f) { f.classList.remove("hidden"); var ft = f.querySelector(".feedback-text"); var expl = lab.getAttribute("data-explanation") || exps[lab.getAttribute("data-explanation-id")] || (state.texts[id + "_exp"]); if (ft && expl) ft.textContent = textFor(id + "_exp") ? textFor(id + "_exp").text : expl; var ic = f.querySelector(".feedback-icon"); if (ic) ic.textContent = ok ? "✓" : "✗"; }
-        var vm = lab.querySelector(".validation-mark"); if (vm) vm.textContent = ok ? "✓" : "✗";
-        if (ok) { done = true; play("success"); confetti(); markCompleted(); activityDock.hidden = false; showNext(); document.body.setAttribute("data-activity-dock", "true"); } else play("error");
-      }
-      on(lab, "click", function (e) { e.preventDefault(); choose(); }); on(lab, "keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } }); lab.setAttribute("tabindex", "0");
+    var blocks = section.querySelectorAll("[data-quiz-question]"); if (!blocks.length) blocks = [section];
+    var remaining = blocks.length; var finished = [];
+    function allDone() { play("success"); confetti(); if (blocks.length > 1) toast("🎉 " + t("allCorrect"), "success"); markCompleted(); activityDock.hidden = false; showNext(); document.body.setAttribute("data-activity-dock", "true"); }
+    function questionDone(i) { if (finished[i]) return; finished[i] = true; remaining--; if (remaining <= 0) allDone(); else play("success"); }
+    var firstOptions = null;
+    Array.prototype.forEach.call(blocks, function (block, bi) {
+      block.classList.remove("adt-done");
+      var qtype = block.getAttribute("data-qtype") || "multiple_choice";
+      if (qtype === "fill_in_the_blank") { initQuizBlank(block, bi, ans, exps, questionDone); return; }
+      var options = block.querySelectorAll(".activity-option"); var done = false; if (!firstOptions) firstOptions = options;
+      options.forEach(function (lab) {
+        lab.classList.remove("adt-correct", "adt-incorrect", "selected-option"); var fc = lab.querySelector(".feedback-container"); if (fc) fc.classList.add("hidden");
+        var inp = lab.querySelector("input"); if (inp) inp.checked = false;
+        function choose() {
+          if (done) return; var id = lab.getAttribute("data-activity-item"); var ok = ans[id] === true; if (inp) inp.checked = true;
+          lab.classList.add("selected-option"); lab.classList.add(ok ? "adt-correct" : "adt-incorrect");
+          var f = lab.querySelector(".feedback-container"); if (f) { f.classList.remove("hidden"); var ft = f.querySelector(".feedback-text"); var expl = lab.getAttribute("data-explanation") || exps[lab.getAttribute("data-explanation-id")] || (state.texts[id + "_exp"]); if (ft && expl) ft.textContent = textFor(id + "_exp") ? textFor(id + "_exp").text : expl; var ic = f.querySelector(".feedback-icon"); if (ic) ic.textContent = ok ? "✓" : "✗"; }
+          var vm = lab.querySelector(".validation-mark"); if (vm) vm.textContent = ok ? "✓" : "✗";
+          if (ok) { done = true; block.classList.add("adt-done"); questionDone(bi); } else play("error");
+        }
+        on(lab, "click", function (e) { e.preventDefault(); choose(); }); on(lab, "keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(); } }); lab.setAttribute("tabindex", "0");
+      });
     });
-    on(document, "keydown", function (e) { var n = Number(e.key); if (n >= 1 && n <= options.length && !/input|textarea/i.test(e.target.tagName)) options[n - 1].click(); });
+    if (firstOptions && blocks.length === 1) on(document, "keydown", function (e) { var n = Number(e.key); if (n >= 1 && n <= firstOptions.length && !/input|textarea/i.test(e.target.tagName)) firstOptions[n - 1].click(); });
+  }
+  function initQuizBlank(block, bi, ans, exps, onDone) {
+    var prefix = block.getAttribute("data-prefix") || ""; var src = block.querySelector("[data-id$='_que']"); var render = block.querySelector(".quiz-fitb-render"); var fb = block.querySelector(".quiz-feedback"); var btn = block.querySelector(".quiz-check");
+    if (!render) return; var done = false;
+    function expected() { var tr = textFor(prefix + "_ans"); return (tr && tr.text) || ans[prefix + "_ans"] || ""; }
+    function build() {
+      var tr = textFor(prefix + "_que"); var text = (tr && tr.text) || (src ? src.textContent : "");
+      render.innerHTML = ""; var parts = text.split(/_{3,}|\[\[blank[^\]]*\]\]/); if (parts.length < 2) parts.push("");
+      var width = Math.max(6, Math.min(24, (expected().split("|")[0] || "").trim().length + 2));
+      parts.forEach(function (p, i) { if (p) render.appendChild(document.createTextNode(p)); if (i < parts.length - 1) { var inp = el("input", { type: "text", class: "quiz-blank fitb-inline-input", "aria-label": t("answer"), autocomplete: "off", autocapitalize: "off", spellcheck: "false" }); inp.style.width = width + "ch"; on(inp, "keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); check(); } }); render.appendChild(inp); } });
+    }
+    function check() {
+      if (done) return; var inputs = render.querySelectorAll("input"); var exp = expected(); var ok = inputs.length > 0; var empty = false;
+      inputs.forEach(function (inp) { if (!inp.value.trim()) { empty = true; } var good = matchesAnswer(inp.value, exp); inp.classList.remove("adt-correct", "adt-incorrect"); inp.classList.add(good ? "adt-correct" : "adt-incorrect"); inp.setAttribute("aria-invalid", good ? "false" : "true"); if (!good) ok = false; });
+      if (fb) { var ex = textFor(prefix + "_ans_exp"); var explText = (ex && ex.text) || exps[prefix + "_ans_exp"] || ""; fb.hidden = false; fb.className = "quiz-feedback feedback-text " + (ok ? "adt-fb-correct" : "adt-fb-incorrect"); fb.textContent = ok ? ("✅ " + (explText || t("correct"))) : (empty ? "✍️ " + t("checkSpelling") : "❌ " + t("incorrect")); announce(fb.textContent); }
+      if (ok) { done = true; inputs.forEach(function (inp) { inp.readOnly = true; }); block.classList.add("adt-done"); onDone(bi); } else play("error");
+    }
+    if (btn) { btn.textContent = t("check"); on(btn, "click", check); }
+    block.__adtRebuild = build; build();
   }
   // Activité pas à pas
   function initStepper(section) {

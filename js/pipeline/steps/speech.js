@@ -6,7 +6,7 @@ import { getSetting } from "../../db.js";
 import { DEFAULT_VOICES, DEFAULT_SPEECH_INSTRUCTIONS, DEFAULT_ELEVENLABS_VOICE_ID } from "../../config.js";
 import { outputLanguages, catalogForLanguage } from "./translate.js";
 
-export const TEXT_CATEGORY = (id) => (/_easy_read$/.test(id) ? "easy-read" : /_im\d{3}/.test(id) ? "captions" : id.includes("_ans_") ? "answers" : /^gl(\d{3}|_manual_)/.test(id) ? "glossary" : "text");
+export const TEXT_CATEGORY = (id) => (/_easy_read$/.test(id) ? "easy-read" : /_im\d{3}/.test(id) ? "captions" : /_ans(_|$)/.test(id) ? "answers" : /^gl(\d{3}|_manual_)/.test(id) ? "glossary" : "text");
 
 export function isTtsExcluded(textId, speech) {
   if (!speech) return false;

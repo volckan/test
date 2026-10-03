@@ -480,25 +480,27 @@ HTML après :
 {% endchat %}`,
 
   quiz_generation: `{% chat role: "system" %}
-Tu es un pédagogue expert dans la création de quiz de compréhension pour des élèves. Analyse les pages de manuel fournies et génère UNE question à choix multiple, adaptée à l'âge, testant la compréhension du contenu.
+Tu es un pédagogue expert dans la création de quiz de compréhension pour des élèves. Analyse les pages de manuel fournies et génère EXACTEMENT {{ questions_per_quiz }} question(s), adaptée(s) à l'âge, testant la compréhension du contenu.
 
-Format du quiz :
-- Exactement 3 options ; chaque option commence par son numéro dans le texte (« 1) », « 2) », « 3) ») afin que la numérotation soit traduite avec la chaîne
-- Indique la bonne réponse via \`answer_index\` (0, 1 ou 2)
-- Privilégie des réponses en un mot ou une expression très courte
+Types de questions autorisés (champ \`type\`) : {{ question_types | join: ", " }}.
+{% if questions_per_quiz > 1 %}Varie les types parmi ceux autorisés et ne pose jamais deux fois la même idée.{% endif %}
+
+Format selon le type :
+- \`multiple_choice\` : exactement 3 options ; chaque option commence par son numéro (« 1) », « 2) », « 3) ») ; \`answer_index\` vaut 0, 1 ou 2 ; réponses en un mot ou une expression très courte ; \`accepted_answers\` vide ; \`explanation\` vide
+- \`true_false\` : une affirmation claire ; exactement 2 options, la première « 1) Vrai », la seconde « 2) Faux » (dans la langue demandée) ; \`answer_index\` vaut 0 ou 1 ; \`accepted_answers\` vide ; \`explanation\` vide
+- \`fill_in_the_blank\` : une phrase du contenu dans laquelle UN mot ou une expression courte est remplacé par « ___ » (trois tirets bas) ; \`accepted_answers\` liste la réponse attendue et ses variantes acceptables (orthographe, singulier/pluriel) ; \`options\` vide ; \`answer_index\` vaut 0 ; \`explanation\` donne la réponse et l'explique avec bienveillance
 - Chaque option a \`text\` et \`explanation\` ; l'explication de la bonne réponse commence par ✅ et félicite, celles des mauvaises commencent par ❌ et corrigent avec bienveillance
-- La réponse correcte doit être répartie aléatoirement entre les trois positions d'un quiz à l'autre
+- Pour les choix multiples, répartis la bonne réponse aléatoirement entre les positions d'une question à l'autre
 Directives : idées principales plutôt que détails ; options plausibles mais distinctes ; langage simple ; explications éducatives et encourageantes.
-Rédige questions et explications en {{ language }} (code : {{ language_code }}).
+Rédige questions, options et explications en {{ language }} (code : {{ language_code }}).
 {% endchat %}
 {% chat role: "user" %}
-Crée une question de compréhension à partir de ces pages :
+Crée {{ questions_per_quiz }} question(s) de compréhension ({{ question_types | join: ", " }}) à partir de ces pages :
 
 {% for page in page_texts %}--- Page {{ page.pageId }} ---
 {{ page.text }}
 
 {% endfor %}
-Adapte la difficulté au niveau de lecture apparent du texte source.
 {% endchat %}`,
 
   glossary: `{% chat role: "system" %}

@@ -67,6 +67,13 @@ et au cas par cas dans la boîte « Image par IA » du scénarimage. Dans les r�
 par sous-étape » indique pour chaque sous-étape si elle hérite du LLM par défaut ou a son propre modèle, et
 deux boutons appliquent le LLM par défaut à toutes les sous-étapes ou rétablissent l'héritage.
 
+**Quiz** : l'étape Quiz génère un quiz toutes les N pages (réglage « Fréquence des quiz »). Chaque quiz
+contient de 1 à 10 questions (réglage « Questions par quiz ») parmi les types activés : choix multiple à
+trois options, vrai/faux, texte à trous à réponse libre (variantes acceptées, explication). Chaque question
+est éditable dans l'écran Quiz, où l'on peut aussi ajouter une question vide ou un quiz entier à partir
+de pages choisies. Dans le lecteur, les réponses sont corrigées question par question et la page est
+validée quand toutes sont justes.
+
 La langue des signes ne fait appel à aucun modèle d'IA : les vidéos sont réalisées par des interprètes,
 téléversées puis affectées aux sections et aux termes du glossaire dans l'étape « Langue des signes ». Si aucune clé n'existe pour le fournisseur demandé, le
 premier fournisseur configuré pour la même tâche est utilisé et une notification le signale.
