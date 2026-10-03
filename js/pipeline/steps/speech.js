@@ -170,7 +170,7 @@ export async function wordTimestamps(ctx) {
     done++; ctx.progress(done, work.length);
   }, { signal: ctx.signal });
   for (const f of jobs.filter((j) => j.finalize)) await storage.putNodeData("tts-timestamps", f.lang, { language: f.lang, entries: f.entries, failed: f.failed, generatedAt: nowIso() });
-  return { message: `${work.length} horodatages${estimated ? ` (${estimated} estimés)` : ""}${!whisper ? " · ajoutez une clé OpenAI ou OpenRouter pour des horodatages Whisper précis" : ""}` };
+  return { message: `${work.length} horodatages${whisper ? ` via ${whisper}${config.speech?.transcription_model ? ` (${config.speech.transcription_model})` : ""}` : ""}${estimated ? ` (${estimated} estimés)` : ""}${!whisper ? " · ajoutez une clé OpenAI ou OpenRouter pour des horodatages Whisper précis" : ""}` };
 }
 
 export const speechSteps = { tts, "word-timestamps": wordTimestamps };

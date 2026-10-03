@@ -10,7 +10,7 @@ import { TYPE_ROLES, REFLOWABLE_FONTS, getTypography } from "../../pipeline/typo
 import { STEPS_BY_DEFAULT_MODEL_KIND, STAGE_BY_SLUG } from "../../pipeline.js";
 import { getCredentials } from "../../storage.js";
 import { PROVIDERS, hasCredentials } from "../../llm/providers.js";
-import { speechProviderPicker, speechVoices } from "../speech-picker.js";
+import { speechProviderPicker, speechVoices, transcriptionPicker } from "../speech-picker.js";
 import { DEFAULT_RUN_ONLY } from "../../a11y/assess.js";
 import { REVIEWER_CATALOG } from "../../a11y/reviewer.js";
 import { TRANSLATION_ISSUE_TYPES, DEFAULT_TRANSLATION_EVALUATION_JUDGE_INSTRUCTIONS } from "../../pipeline/translation-eval.js";
@@ -155,7 +155,7 @@ async function imageTranslationTab(ctx, body) {
 }
 async function speechGeneral(ctx, body) {
   const sp = ctx.config.speech ?? {};
-  body.appendChild(card("Fournisseur et modèle", h("div", { class: "stack" }, await speechProviderPicker(ctx), h("div", { class: "row row-wrap" }, field("Format", select([["mp3", "MP3"], ["wav", "WAV"]], sp.format ?? "mp3", { onChange: (v) => patchBookConfig(ctx, { speech: { format: v } }) })), field("Horodatages des mots (transcription)", select([["", "Automatique (OpenAI, sinon OpenRouter)"], ["openai", "OpenAI Whisper"], ["openrouter", "OpenRouter (Whisper)"]], sp.transcription_provider ?? "", { onChange: (v) => patchBookConfig(ctx, { speech: { transcription_provider: v || undefined } }) }))))));
+  body.appendChild(card("Fournisseur et modèle", h("div", { class: "stack" }, await speechProviderPicker(ctx), h("div", { class: "row row-wrap" }, field("Format", select([["mp3", "MP3"], ["wav", "WAV"]], sp.format ?? "mp3", { onChange: (v) => patchBookConfig(ctx, { speech: { format: v } }) }))), await transcriptionPicker(ctx))));
   const cats = new Set(sp.excluded_categories ?? []);
   body.appendChild(card("Contenu lu à voix haute", h("div", { class: "grid grid-2" }, [["text", "Texte"], ["captions", "Légendes d'images"], ["answers", "Réponses des activités"], ["glossary", "Glossaire"], ["easy-read", "Lecture facile"]].map(([k, l]) => switchRow(l, !cats.has(k), (v) => { if (v) cats.delete(k); else cats.add(k); patchBookConfig(ctx, { speech: { excluded_categories: [...cats] } }); })))));
   body.appendChild(card("Réglages ElevenLabs", h("div", { class: "stack" }, h("div", { class: "row row-wrap" }, ...[["elevenlabs_stability", "Stabilité", 0, 1], ["elevenlabs_similarity_boost", "Similarité", 0, 1], ["elevenlabs_style", "Style", 0, 1], ["elevenlabs_speed", "Vitesse", 0.7, 1.2]].map(([k, l, min, max]) => field(l, textInput({ type: "number", min, max, step: 0.05, value: sp[k] ?? "", placeholder: "défaut", style: "width:100px", onChange: (e) => patchBookConfig(ctx, { speech: { [k]: e.target.value === "" ? undefined : Number(e.target.value) } }) })))), switchRow("Amplification du locuteur", sp.elevenlabs_use_speaker_boost !== false, (v) => patchBookConfig(ctx, { speech: { elevenlabs_use_speaker_boost: v } })), field("Normalisation du texte", select([["auto", "Automatique"], ["on", "Activée"], ["off", "Désactivée"]], sp.elevenlabs_apply_text_normalization ?? "auto", { onChange: (v) => patchBookConfig(ctx, { speech: { elevenlabs_apply_text_normalization: v } }) })))));

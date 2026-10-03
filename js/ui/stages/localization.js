@@ -8,7 +8,7 @@ import { callLLM } from "../../llm/client.js";
 import { SCHEMAS, stepModel, languageContext, bookLanguage } from "../../pipeline/steps/common.js";
 import { getCredentials } from "../../storage.js";
 import { hasCredentials, transcribeWithTimestamps, PROVIDERS } from "../../llm/providers.js";
-import { speechProviderPicker } from "../speech-picker.js";
+import { speechProviderPicker, transcriptionPicker } from "../speech-picker.js";
 import { OPENAI_TTS_VOICES as OV, GEMINI_TTS_VOICES } from "../../config.js";
 import { nowIso, baseLanguage, pickFile, sha256 } from "../../util.js";
 import { DEFAULT_TRANSLATION_EVALUATION_JUDGE_INSTRUCTIONS } from "../../pipeline/translation-eval.js";
@@ -110,7 +110,7 @@ async function uploadAudio(ctx, lang, textId, rerender) {
 // ── Parole ─────────────────────────────────────────────────────────────────
 export async function renderSpeech(ctx, container) {
   const cfg = ctx.config; const sp = cfg.speech ?? {}; const credentials = await getCredentials();
-  const settings = h("div", { class: "card" }, h("div", { class: "card-body stack" }, h("h3", { style: { margin: 0 } }, "Réglages de la parole"), await speechProviderPicker(ctx), h("div", { class: "field" }, h("span", { class: "field-label" }, "Surlignage dans le lecteur"), segmented([["sentence", "Par phrase"], ["word", "Par mot"]], sp.word_highlighting === false ? "sentence" : "word", (v) => patchBookConfig(ctx, { speech: { word_highlighting: v === "word" } })), h("span", { class: "field-hint" }, "Le surlignage par mot nécessite des horodatages (ElevenLabs natif, ou Whisper via une clé OpenAI ou OpenRouter ; sinon estimation).")), button("Configurer les voix et accents", { size: "sm", variant: "secondary", iconName: "mic", onClick: () => ctx.go("speech", null, { tab: "voices" }) })));
+  const settings = h("div", { class: "card" }, h("div", { class: "card-body stack" }, h("h3", { style: { margin: 0 } }, "Réglages de la parole"), await speechProviderPicker(ctx), await transcriptionPicker(ctx), h("div", { class: "field" }, h("span", { class: "field-label" }, "Surlignage dans le lecteur"), segmented([["sentence", "Par phrase"], ["word", "Par mot"]], sp.word_highlighting === false ? "sentence" : "word", (v) => patchBookConfig(ctx, { speech: { word_highlighting: v === "word" } })), h("span", { class: "field-hint" }, "Le surlignage par mot nécessite des horodatages (ElevenLabs natif, ou Whisper via une clé OpenAI ou OpenRouter ; sinon estimation).")), button("Configurer les voix et accents", { size: "sm", variant: "secondary", iconName: "mic", onClick: () => ctx.go("speech", null, { tab: "voices" }) })));
   container.appendChild(h("div", { class: "stack" }, settings, runCard(ctx, "speech")));
   if (prereqGuard(ctx, "speech", container)) return;
   const langs = await outputLanguages(ctx.storage, ctx.config);

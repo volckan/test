@@ -87,3 +87,52 @@ export async function speechProviderPicker(ctx, { onChange } = {}) {
     status,
     field("Voix par défaut", voiceHost, { hint: "« Automatique » choisit la voix selon la langue (Paramètres → Parole → correspondances). Les voix par langue de ce livre se règlent dans l'onglet Voix." }));
 }
+
+// ── Transcription (horodatages des mots) ─────────────────────────────────────
+export const TRANSCRIPTION_PROVIDERS = [["openai", "OpenAI"], ["openrouter", "OpenRouter"]];
+const DEFAULT_TRANSCRIPTION_MODEL = { openai: "whisper-1", openrouter: "openai/whisper-1" };
+
+/** Modèles de transcription d'un fournisseur (en ligne si une clé existe, sinon liste embarquée). */
+export async function transcriptionModels(prov, creds) {
+  const live = await listModels(prov, creds, "stt").catch(() => []);
+  const p = PROVIDERS.find((x) => x.id === prov);
+  const fallback = p?.modelsByKind?.stt ?? (p?.defaultModels?.stt ? [p.defaultModels.stt] : []);
+  return [...new Set([...(live ?? []), ...(live?.length ? [] : fallback)])];
+}
+
+/**
+ * Sélecteur « fournisseur → modèle de transcription » pour les horodatages de mots. Écrit
+ * config.speech.transcription_provider ("" = automatique : OpenAI, sinon OpenRouter) et transcription_model.
+ */
+export async function transcriptionPicker(ctx, { onChange } = {}) {
+  const creds = await getCredentials();
+  let sp = ctx.config.speech ?? {};
+  let prov = sp.transcription_provider ?? "";
+  const effective = () => prov || (hasCredentials("openai", creds) ? "openai" : hasCredentials("openrouter", creds) ? "openrouter" : "");
+  const modelSel = h("select", { class: "input select", "aria-label": "Modèle de transcription" });
+  const status = h("span", { class: "field-hint" });
+  const save = async (patch) => { await patchBookConfig(ctx, { speech: patch }); sp = ctx.config.speech ?? sp; onChange?.(); };
+
+  const fillModels = async () => {
+    const eff = effective();
+    modelSel.innerHTML = ""; modelSel.disabled = true;
+    if (!eff) { modelSel.appendChild(h("option", { value: "" }, "— aucune clé OpenAI ni OpenRouter —")); status.textContent = "Sans clé, les horodatages sont estimés à partir de la durée de l'audio. Ajoutez une clé dans Paramètres → Fournisseurs IA."; return; }
+    modelSel.appendChild(h("option", {}, "Chargement…"));
+    const models = await transcriptionModels(eff, creds);
+    const current = sp.transcription_model ?? DEFAULT_TRANSCRIPTION_MODEL[eff];
+    const list = [...models]; if (current && !list.includes(current)) list.unshift(current);
+    modelSel.innerHTML = ""; for (const m of list) modelSel.appendChild(h("option", { value: m, selected: m === current }, m)); modelSel.disabled = false;
+    const name = TRANSCRIPTION_PROVIDERS.find(([id]) => id === eff)?.[1] ?? eff;
+    status.textContent = hasCredentials(eff, creds) ? `${models.length} modèle${models.length > 1 ? "s" : ""} de transcription chez ${name}${prov ? "" : " (choisi automatiquement)"}.` : `Aucune clé pour ${name} : liste embarquée.`;
+    if (models.length && !models.includes(current)) status.textContent += ` Le modèle configuré « ${current} » n'apparaît pas dans la liste du fournisseur.`;
+    if (!/whisper/i.test(current)) status.textContent += " Les horodatages par mot sont garantis avec les modèles Whisper ; sinon ils peuvent être estimés.";
+  };
+  modelSel.addEventListener("change", () => save({ transcription_model: modelSel.value || undefined }));
+  const provSel = select([["", "Automatique (OpenAI, sinon OpenRouter)"], ...TRANSCRIPTION_PROVIDERS.map(([id, l]) => [id, `${l}${hasCredentials(id, creds) ? "" : " (sans clé)"}`])], prov, { onChange: async (v) => { prov = v; await save({ transcription_provider: v || undefined, transcription_model: undefined }); await fillModels(); }, attrs: { "aria-label": "Fournisseur de transcription" } });
+  const custom = textInput({ placeholder: "ou saisir un identifiant de modèle…", value: "", style: "max-width:260px", onChange: async (e) => { const m = e.target.value.trim(); if (!m) return; await save({ transcription_model: m }); e.target.value = ""; await fillModels(); } });
+  const refresh = button("", { variant: "ghost", size: "sm", iconName: "refresh", title: "Recharger la liste des modèles", onClick: fillModels });
+  await fillModels();
+  return h("div", { class: "stack" },
+    h("div", { class: "row row-wrap" }, field("Horodatages des mots : fournisseur", provSel), field("Modèle de transcription", h("div", { class: "row" }, h("div", { class: "grow", style: { minWidth: "240px" } }, modelSel), refresh, custom))),
+    status);
+}

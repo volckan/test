@@ -473,7 +473,8 @@ export async function transcribeWithTimestamps({ blob, language, credentials, si
   }
   const fd = new FormData();
   fd.append("file", blob, `audio.${blob.type.includes("wav") ? "wav" : "mp3"}`);
-  fd.append("model", "whisper-1"); fd.append("response_format", "verbose_json"); fd.append("timestamp_granularities[]", "word");
+  const oaModel = model || "whisper-1"; fd.append("model", oaModel);
+  if (/whisper/i.test(oaModel)) { fd.append("response_format", "verbose_json"); fd.append("timestamp_granularities[]", "word"); } else fd.append("response_format", "json");
   if (language) fd.append("language", language.split("-")[0]);
   if (prompt) fd.append("prompt", prompt.slice(0, 800));
   const headers = authHeaders("openai", creds); delete headers["Content-Type"];

@@ -57,8 +57,8 @@ Les appels sont faits **directement depuis le navigateur** avec vos propres clé
 
 Les étapes de parole choisissent leur fournisseur dans les réglages « Parole » du livre : fournisseur,
 modèle de parole (liste lue en direct depuis l'API du fournisseur, par exemple tous les modèles de
-synthèse vocale d'OpenRouter), voix par défaut parmi celles que le modèle accepte, source des horodatages
-de mots. Si aucune clé n'existe pour le fournisseur demandé, le
+synthèse vocale d'OpenRouter), voix par défaut parmi celles que le modèle accepte, et fournisseur et
+modèle de transcription pour les horodatages de mots (OpenAI ou OpenRouter, liste lue en direct). Si aucune clé n'existe pour le fournisseur demandé, le
 premier fournisseur configuré pour la même tâche est utilisé et une notification le signale.
 
 ## Utilisation
