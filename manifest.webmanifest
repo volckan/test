@@ -1,0 +1,1 @@
+{ "name": "ADT Studio Web", "short_name": "ADT Studio", "start_url": "./", "display": "standalone", "background_color": "#ffffff", "theme_color": "#1CABE2", "lang": "fr", "icons": [{ "src": "assets/favicon.svg", "sizes": "any", "type": "image/svg+xml" }] }

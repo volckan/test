@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADT Studio Web</title>
+<meta name="description" content="Transformez n'importe quel PDF en livre numérique accessible (ADT) : audio, traductions, lecture facile, quiz, glossaire — entièrement dans votre navigateur.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/app.css">
+<script>try{var t=JSON.parse(localStorage.getItem("adt-studio:theme")||'"system"');document.documentElement.dataset.theme=t==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"):t;}catch(e){}</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Aller au contenu</a>
+<div id="app" aria-live="off">
+  <div class="boot"><div class="spinner"></div><p>Chargement d'ADT Studio Web…</p></div>
+</div>
+<noscript><p class="noscript">ADT Studio Web nécessite JavaScript.</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
